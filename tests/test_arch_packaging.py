@@ -215,3 +215,21 @@ class UpstreamSyncTests(unittest.TestCase):
                 second=subprocess.run(['bash',str(ROOT/'packaging/arch/sync-upstream.sh'),str(upstream),'main'],cwd=fork,capture_output=True,text=True)
                 self.assertEqual(second.returncode,0,second.stdout+second.stderr)
                 self.assertIn('already synchronized',second.stdout)
+
+
+class BuildDependencyTests(unittest.TestCase):
+    def test_container_installs_all_recipe_dependencies(self):
+        import shlex
+        recipe = ROOT / 'packaging/arch/PKGBUILD'
+        result = subprocess.run(
+            ['bash', '-c', 'source "$1"; printf "%s\\n" "${depends[@]}" "${makedepends[@]}" "${checkdepends[@]}"',
+             'recipe-dependencies', str(recipe)],
+            cwd=ROOT, capture_output=True, text=True, check=True)
+        required = set(result.stdout.splitlines())
+        bootstrap = (ROOT / 'packaging/arch/ci-build.sh').read_text()
+        install_command = bootstrap.split('pacman -Syu ', 1)[1].split('\nuseradd ', 1)[0]
+        installed = set(shlex.split(install_command.replace('\\\n', ' ')))
+        # These toolchain runtime packages are provided by archlinux:base-devel.
+        inherited = {'glibc', 'gcc-libs'}
+        self.assertFalse(required - installed - inherited,
+                         f'Missing container dependencies: {sorted(required - installed - inherited)}')
