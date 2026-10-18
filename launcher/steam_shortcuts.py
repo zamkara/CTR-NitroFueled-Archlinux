@@ -158,6 +158,9 @@ def add_shortcut(path, entry):
 def launcher_command():
     """What Steam should start: the AppImage when running from one, else launcher/bb-launcher.sh;
     `--play` starts the game without the launcher window (game mode)."""
+    native = os.environ.get("CTR_NATIVE_LAUNCHER")
+    if native:
+        return native, str(Path(native).parent), "--play"
     appimage = os.environ.get("APPIMAGE")
     if appimage and Path(appimage).is_file():
         exe = str(Path(appimage).resolve())

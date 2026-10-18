@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export BB_DATA_DIR=${BB_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ctr-nitrofueled}
+export BB_PREBUILT=1
+export PYTHONDONTWRITEBYTECODE=1
+export CTR_NATIVE_LAUNCHER=/usr/bin/ctr-nitrofueled
+export PYTHON=/usr/bin/python
+# The renderer initializes its user directory before main(). Never write beside system files.
+export BB_GPU_USER_DIR=${BB_USER_DIR:-$BB_DATA_DIR/user}
+mkdir -p -- "$BB_DATA_DIR" "$BB_GPU_USER_DIR"
+cd /usr/lib/ctr-nitrofueled
+exec /usr/bin/python /usr/lib/ctr-nitrofueled/launcher/sacredfire_launcher.py "$@"

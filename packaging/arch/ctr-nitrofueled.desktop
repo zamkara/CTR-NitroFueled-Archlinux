@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Launcher Crash Team Racing Nitro-Fueled
+Comment=Configure the native runtime and launch Crash Team Racing Nitro-Fueled
+Exec=ctr-nitrofueled
+TryExec=ctr-nitrofueled
+Icon=ctr-nitrofueled
+Terminal=false
+Categories=Game;
+StartupNotify=true

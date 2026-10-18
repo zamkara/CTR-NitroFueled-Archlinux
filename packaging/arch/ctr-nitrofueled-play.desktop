@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Crash Team Racing Nitro-Fueled
+Comment=Play with the settings saved by the launcher
+Exec=ctr-nitrofueled --play
+TryExec=ctr-nitrofueled
+Icon=ctr-nitrofueled
+Terminal=false
+Categories=Game;
+StartupNotify=false
