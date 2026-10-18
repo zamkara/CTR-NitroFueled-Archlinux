@@ -148,7 +148,8 @@ class NativeIntegrationTests(unittest.TestCase):
             for name in ('run.sh', 'scripts/prepare.py', 'scripts/link_libc.py',
                          'scripts/link_modules.py', 'scripts/content_profile.py', 'scripts/patches.py',
                          'tools/gen_import_names.py', 'tools/merge_update.py',
-                         'launcher/sacredfire_launcher.py', 'launcher/steam_shortcuts.py'):
+                         'launcher/sacredfire_launcher.py', 'launcher/steam_shortcuts.py',
+                         'launcher/control_bindings.py', 'launcher/native_update.py', 'install.sh'):
                 self.assertTrue((app / name).is_file(), name)
             info = json.loads((app / 'build-info.json').read_text())
             self.assertRegex(info['commit'], r'^[a-f0-9]{40}$')

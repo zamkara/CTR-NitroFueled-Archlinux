@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import time
+import threading
 from pathlib import Path
 
 from bbport_i18n import language, set_language, tr
@@ -32,6 +33,8 @@ PORT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PORT_DIR / "scripts"))
 import game_check  # noqa: E402
 import steam_shortcuts  # noqa: E402
+import control_bindings
+import native_update
 
 PACKAGED = bool(os.environ.get("BB_PREBUILT"))
 
@@ -265,6 +268,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.set_content(toolbar)
         self.stack.add_titled_with_icon(self.build_settings_page(), "settings", tr("Settings"),
                                         "preferences-system-symbolic")
+        self.stack.add_titled_with_icon(self.build_controls_page(), "controls", tr("Controls"),
+                                        "input-gaming-symbolic")
         self.stack.add_titled_with_icon(self.build_log_page(), "log", tr("Log"),
                                         "utilities-terminal-symbolic")
         self.update_launch_button()
@@ -365,6 +370,20 @@ class LauncherWindow(Adw.ApplicationWindow):
         steam_row.add_suffix(add_button)
         steam.add(steam_row)
         page.add(steam)
+        updates = Adw.PreferencesGroup(title=tr("Application updates"))
+        try:
+            version = native_update.installed_info(PORT_DIR)["package_version"]
+        except (OSError, ValueError):
+            version = tr("Development checkout")
+        self.update_row = Adw.ActionRow(title=tr("Native Arch package"), subtitle=version)
+        self.update_button = Gtk.Button(label=tr("Check for Updates"), valign=Gtk.Align.CENTER)
+        self.update_button.connect("clicked", self.on_check_updates)
+        self.update_row.add_suffix(self.update_button)
+        self.install_update_button = Gtk.Button(label=tr("Install Update"), valign=Gtk.Align.CENTER, visible=False)
+        self.install_update_button.connect("clicked", self.on_install_update)
+        self.update_row.add_suffix(self.install_update_button)
+        updates.add(self.update_row)
+        page.add(updates)
         self.update_user_status()
         return page
 
@@ -537,6 +556,140 @@ class LauncherWindow(Adw.ApplicationWindow):
             except OSError as error:
                 self.toasts.add_toast(Adw.Toast(title=tr("Could not save the log: {}").format(error)))
         dialog.save(self, None, finish)
+
+    # --- Native package updates ----------------------------------------------------------
+
+    def on_check_updates(self, _button):
+        self.update_button.set_sensitive(False)
+        self.install_update_button.set_visible(False)
+        self.update_row.set_subtitle(tr("Checking the latest published package…"))
+
+        def worker():
+            try:
+                result = native_update.check(PORT_DIR)
+                error = None
+            except Exception as exc:
+                result, error = None, str(exc)
+            GLib.idle_add(self.finish_update_check, result, error)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def finish_update_check(self, result, error):
+        self.update_button.set_sensitive(True)
+        if error:
+            self.update_row.set_subtitle(tr("Check failed: {}. Try again.").format(error))
+        elif result["update_available"]:
+            self.update_row.set_subtitle(tr("Installed: {} · Available: {}").format(
+                result["installed"], result["version"]))
+            self.install_update_button.set_visible(True)
+        else:
+            self.update_row.set_subtitle(tr("Up to date · {}").format(result["installed"]))
+        return False
+
+    def on_install_update(self, _button):
+        if self.process is not None:
+            self.toasts.add_toast(Adw.Toast(title=tr("Stop the game before updating")))
+            return
+        try:
+            self.store()
+            subprocess.Popen(native_update.installer_command(PORT_DIR))
+        except (OSError, ValueError) as error:
+            self.toasts.add_toast(Adw.Toast(title=tr("Could not start the installer: {}").format(error)))
+            return
+        self.toasts.add_toast(Adw.Toast(title=tr("Complete the update in the terminal, then restart the launcher"), timeout=8))
+
+    # --- Input mapping -------------------------------------------------------------------
+
+    def build_controls_page(self):
+        page = Adw.PreferencesPage()
+        self.binding_rows = {}
+        for prefix, title, note in (
+            ("key", "Keyboard", "Physical key positions. Select up to four keys per action."),
+            ("pad", "Controller", "Remap buttons and triggers. Analog sticks keep their native axes."),
+        ):
+            group = Adw.PreferencesGroup(title=tr(title), description=tr(note) + " " + tr("Changes apply on the next game launch."))
+            for action in control_bindings.defaults(prefix):
+                label = control_bindings.LABELS.get(action, action.replace("_", " ").title())
+                row = Adw.ActionRow(title=tr(label))
+                button = Gtk.Button(label=tr("Change"), valign=Gtk.Align.CENTER)
+                button.connect("clicked", self.on_edit_binding, prefix, action)
+                row.add_suffix(button)
+                self.binding_rows[prefix, action] = row
+                group.add(row)
+            row = Adw.ActionRow(title=tr("Restore default mappings"))
+            button = Gtk.Button(label=tr("Reset"), valign=Gtk.Align.CENTER)
+            button.connect("clicked", self.on_reset_bindings, prefix)
+            row.add_suffix(button)
+            group.add(row)
+            page.add(group)
+        self.refresh_binding_rows()
+        return page
+
+    def refresh_binding_rows(self):
+        for (prefix, action), row in self.binding_rows.items():
+            value = control_bindings.binding(self.ini, prefix, action)
+            row.set_subtitle(", ".join(control_bindings.display_name(prefix, name.strip()) for name in value.split(",")) if value else tr("Unbound"))
+
+    def on_edit_binding(self, _button, prefix, action):
+        label = control_bindings.LABELS.get(action, action.replace("_", " ").title())
+        dialog = Adw.AlertDialog(heading=tr(label), body=tr("Choose up to four bindings. An empty selection leaves the action unbound."))
+        group = Adw.PreferencesGroup()
+        options = [""] + list(control_bindings.choices(prefix))
+        names = [tr("Unbound")] + [control_bindings.display_name(prefix, name) for name in options[1:]]
+        current = control_bindings.binding(self.ini, prefix, action).split(",")
+        dropdowns = []
+        for index in range(4):
+            row = Adw.ActionRow(title=tr("Binding {}").format(index + 1))
+            drop = Gtk.DropDown(model=Gtk.StringList.new(names), enable_search=True, valign=Gtk.Align.CENTER)
+            value = current[index].strip() if index < len(current) else ""
+            drop.set_selected(options.index(value) if value in options else 0)
+            row.add_suffix(drop)
+            group.add(row)
+            dropdowns.append(drop)
+        dialog.set_extra_child(group)
+        dialog.add_response("cancel", tr("Cancel"))
+        dialog.add_response("save", tr("Save"))
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
+
+        def respond(_dialog, response):
+            if response != "save":
+                return
+            try:
+                value = control_bindings.normalized(prefix, [options[drop.get_selected()] for drop in dropdowns])
+                values, lines = load_ini()
+                values[f"{prefix}.{action}"] = value
+                save_ini(values, lines)
+                self.ini, self.ini_lines = load_ini()
+            except (OSError, ValueError) as error:
+                self.toasts.add_toast(Adw.Toast(title=str(error)))
+            self.refresh_binding_rows()
+
+        dialog.connect("response", respond)
+        dialog.present(self)
+
+    def on_reset_bindings(self, _button, prefix):
+        dialog = Adw.AlertDialog(heading=tr("Restore default mappings?"),
+                                body=tr("Only this input section will be reset. Other settings are preserved."))
+        dialog.add_response("cancel", tr("Cancel"))
+        dialog.add_response("reset", tr("Reset"))
+        dialog.set_response_appearance("reset", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_close_response("cancel")
+
+        def respond(_dialog, response):
+            if response == "reset":
+                values, lines = load_ini()
+                values, lines = control_bindings.reset(values, lines, prefix)
+                try:
+                    save_ini(values, lines)
+                    self.ini, self.ini_lines = load_ini()
+                except OSError as error:
+                    self.toasts.add_toast(Adw.Toast(title=str(error)))
+                self.refresh_binding_rows()
+
+        dialog.connect("response", respond)
+        dialog.present(self)
 
     # --- Steam ---------------------------------------------------------------------------
 

@@ -7,7 +7,7 @@ arch=('x86_64')
 url='https://github.com/zamkara/CTR-NitroFueled'
 license=('GPL-2.0-or-later' 'MIT' 'Bitstream-Vera' 'Arev')
 depends=('glibc' 'gcc-libs' 'vulkan-icd-loader' 'sdl3' 'ffmpeg' 'fmt' 'xxhash'
-         'zydis' 'libx11' 'python' 'python-gobject' 'gtk4' 'libadwaita' 'xdg-utils')
+         'zydis' 'libx11' 'python' 'python-gobject' 'gtk4' 'libadwaita' 'xdg-utils' 'xdg-terminal-exec')
 makedepends=('git' 'cmake' 'ninja' 'pkgconf' 'boost' 'robin-map' 'vulkan-headers'
              'glslang' 'spirv-tools')
 checkdepends=('xorg-server-xvfb' 'xorg-xauth' 'ttf-dejavu' 'desktop-file-utils')
@@ -62,6 +62,7 @@ package() {
     install -Dm755 out/sacredfire "$dest/bin/sacredfire"
     install -Dm755 out/bb-gpu-capabilities "$dest/bin/bb-gpu-capabilities"
     install -Dm755 out/gpu/libbbgpu.so "$dest/bin/gpu/libbbgpu.so"
+    install -Dm755 packaging/arch/install.sh "$dest/install.sh"
     install -Dm755 run.sh "$dest/run.sh"
     # run.py remains available for upstream tooling; Linux uses run.sh.
     install -Dm644 run.py "$dest/run.py"

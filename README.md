@@ -35,6 +35,21 @@ Without a prepared game folder, the direct-play shortcut opens the launcher for 
 The Linux launcher is upstream's GTK4/libadwaita launcher; it does not promise feature parity
 with upstream's newer Windows launcher. Headless build checks do not establish gameplay compatibility.
 
+## Updates and controls
+
+Open **Settings → Application updates → Check for Updates** to check the latest native package.
+Checks run only on request and do not send local paths, settings or installed-version metadata.
+When an update is available, **Install Update** opens the normal terminal installer. It verifies
+the package checksum and lets pacman handle dependencies and authentication. Stop the game before
+updating and restart the launcher afterward.
+
+The **Controls** tab maps keyboard keys and controller buttons/triggers to the runtime's PS4 inputs.
+Each action supports up to four bindings, searchable by SDL key/button name. Keyboard names refer
+to physical key positions. Empty selections unbind an action. Keyboard and controller sections
+have independent reset actions; analog sticks retain their native axes. Mappings are saved to
+the same `bbport.ini` used by direct play and apply on the next game launch. Controller mapping
+uses SDL button names rather than controller-specific branding.
+
 ## Prepare your game
 
 Extract your own decrypted base game and update into separate folders. Merge the update using
