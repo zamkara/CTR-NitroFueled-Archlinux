@@ -1,4 +1,5 @@
 # CTR Nitro-Fueled for Arch Linux
+<img width="1920" height="1080" alt="screenshot-2026-10-18_15-19-54" src="https://github.com/user-attachments/assets/53cfda66-6e41-4dfb-bf53-1a4664a8f601" />
 
 Native x86_64 Arch Linux packaging for Crash Team Racing: Nitro-Fueled, including Omarchy.
 Based on [GetLostIn/CTR-NitroFueled-PC](https://github.com/GetLostIn/CTR-NitroFueled-PC),
