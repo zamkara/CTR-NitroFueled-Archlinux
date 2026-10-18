@@ -4,7 +4,7 @@ set -euo pipefail
 pacman -Syu --noconfirm --needed base-devel git cmake ninja pkgconf boost robin-map \
     vulkan-headers vulkan-icd-loader glslang spirv-tools sdl3 ffmpeg fmt xxhash zydis \
     libx11 python python-gobject gtk4 libadwaita xdg-utils xdg-terminal-exec \
-    xorg-server-xvfb xorg-xauth ttf-dejavu desktop-file-utils
+    xorg-server-xvfb xorg-xauth ttf-dejavu desktop-file-utils dbus
 useradd -m builder
 install -d -o builder -g builder /build
 mkdir -p /output
