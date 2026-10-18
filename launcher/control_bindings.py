@@ -83,3 +83,54 @@ PAD_LABELS = {
 
 def display_name(prefix, name):
     return PAD_LABELS.get(name, name.replace('_', ' ').title()) if prefix == 'pad' else name
+
+
+@lru_cache(maxsize=1)
+def physical_keymap():
+    """GDK's Linux hardware keycodes use the XKB keycode space on X11 and Wayland."""
+    import atexit
+    lib = ctypes.CDLL('libxkbcommon.so.0')
+    class Names(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_char_p) for name in ('rules','model','layout','variant','options')]
+    lib.xkb_context_new.argtypes = [ctypes.c_int]
+    lib.xkb_context_new.restype = ctypes.c_void_p
+    lib.xkb_keymap_new_from_names.argtypes = [ctypes.c_void_p, ctypes.POINTER(Names), ctypes.c_int]
+    lib.xkb_keymap_new_from_names.restype = ctypes.c_void_p
+    lib.xkb_keymap_key_get_syms_by_level.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.POINTER(ctypes.c_uint))]
+    lib.xkb_keymap_key_get_syms_by_level.restype = ctypes.c_int
+    lib.xkb_keysym_get_name.argtypes = [ctypes.c_uint, ctypes.c_char_p, ctypes.c_size_t]
+    lib.xkb_context_unref.argtypes = [ctypes.c_void_p]
+    lib.xkb_keymap_unref.argtypes = [ctypes.c_void_p]
+    context = lib.xkb_context_new(0)
+    if not context: raise OSError('Could not initialize keyboard recording')
+    keymap = lib.xkb_keymap_new_from_names(context, ctypes.byref(Names(b'evdev',b'pc105',b'us',b'',b'')),0)
+    if not keymap:
+        lib.xkb_context_unref(context)
+        raise OSError('Could not load the physical keyboard map')
+    atexit.register(lambda: (lib.xkb_keymap_unref(keymap), lib.xkb_context_unref(context)))
+    return lib, keymap
+
+
+def physical_key_name(keycode):
+    """Canonical SDL physical name for a GDK hardware code; unknown codes remain unbound."""
+    lib, keymap = physical_keymap()
+    symbols = ctypes.POINTER(ctypes.c_uint)()
+    if lib.xkb_keymap_key_get_syms_by_level(keymap, keycode, 0, 0, ctypes.byref(symbols)) != 1:
+        return None
+    text = ctypes.create_string_buffer(128)
+    if lib.xkb_keysym_get_name(symbols[0], text, len(text)) <= 0: return None
+    name = text.value.decode()
+    aliases = {'Shift_L':'Left Shift','Shift_R':'Right Shift','Control_L':'Left Ctrl','Control_R':'Right Ctrl',
+               'Alt_L':'Left Alt','Alt_R':'Right Alt','Super_L':'Left GUI','Super_R':'Right GUI',
+               'space':'Space','Prior':'PageUp','Next':'PageDown','Caps_Lock':'CapsLock',
+               'Num_Lock':'Numlock','Scroll_Lock':'ScrollLock','Print':'PrintScreen',
+               'KP_Enter':'Keypad Enter','KP_Add':'Keypad +','KP_Subtract':'Keypad -',
+               'KP_Multiply':'Keypad *','KP_Divide':'Keypad /','KP_Delete':'Keypad .',
+               'KP_Insert':'Keypad 0','KP_End':'Keypad 1','KP_Down':'Keypad 2','KP_Next':'Keypad 3',
+               'KP_Left':'Keypad 4','KP_Begin':'Keypad 5','KP_Right':'Keypad 6','KP_Home':'Keypad 7',
+               'KP_Up':'Keypad 8','KP_Prior':'Keypad 9','semicolon':';','apostrophe':"'",'grave':'`',
+               'minus':'-','equal':'=','bracketleft':'[','bracketright':']','backslash':'\\',
+               'comma':',','period':'.','slash':'/'}
+    name = aliases.get(name, name.upper() if len(name) == 1 else name)
+    canonical = {choice.casefold():choice for choice in choices('key')}
+    return canonical.get(name.casefold())

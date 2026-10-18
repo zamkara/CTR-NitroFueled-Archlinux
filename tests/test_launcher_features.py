@@ -146,6 +146,28 @@ class LauncherFeatureTests(unittest.TestCase):
         config = json.loads((launcher.DATA_DIR / 'patches.json').read_text())
         self.assertIn('extra.xml/Extra',config['enabled'])
 
+    def test_recording_captures_physical_key_and_escape_cancels(self):
+        self.window.on_edit_binding(None, 'key', 'cross')
+        dialog = self.window.get_visible_dialog()
+        def buttons(widget):
+            result = [widget] if isinstance(widget,Gtk.Button) and widget.get_label() == 'Record' else []
+            child = widget.get_first_child()
+            while child:
+                result.extend(buttons(child)); child = child.get_next_sibling()
+            return result
+        records = buttons(dialog.get_extra_child())
+        self.assertEqual(len(records),4)
+        records[0].emit('clicked')
+        self.assertTrue(dialog.record_controller.emit('key-pressed', launcher.Gdk.KEY_f, 41, 0))
+        drops = self.dropdowns(dialog.get_extra_child())
+        options = [''] + list(launcher.control_bindings.choices('key'))
+        self.assertEqual(options[drops[0].get_selected()],'F')
+        records[0].emit('clicked')
+        self.assertTrue(dialog.record_controller.emit('key-pressed', launcher.Gdk.KEY_Escape, 9, 0))
+        self.assertEqual(options[drops[0].get_selected()],'F')
+        dialog.emit('response','save');dialog.force_close()
+        self.assertEqual(launcher.load_ini()[0]['key.cross'],'F')
+
     def dropdowns(self, widget):
         result = [widget] if isinstance(widget, Gtk.DropDown) else []
         child = widget.get_first_child()

@@ -27,7 +27,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 PORT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PORT_DIR / "scripts"))
@@ -754,14 +754,44 @@ class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
         names = [tr("Unbound")] + [control_bindings.display_name(prefix, name) for name in options[1:]]
         current = control_bindings.binding(self.ini, prefix, action).split(",")
         dropdowns = []
+        recording = {"index": None}
+        record_buttons = []
         for index in range(4):
             row = Adw.ActionRow(title=tr("Binding {}").format(index + 1))
             drop = Gtk.DropDown(model=Gtk.StringList.new(names), enable_search=True, valign=Gtk.Align.CENTER)
             value = current[index].strip() if index < len(current) else ""
             drop.set_selected(options.index(value) if value in options else 0)
             row.add_suffix(drop)
+            if prefix == "key":
+                record = Gtk.Button(label="Record", valign=Gtk.Align.CENTER)
+                def listen(button, slot=index):
+                    for other in record_buttons: other.set_label("Record")
+                    recording["index"] = slot
+                    button.set_label("Press a key…")
+                record.connect("clicked", listen)
+                record_buttons.append(record)
+                row.add_suffix(record)
             group.add(row)
             dropdowns.append(drop)
+        if prefix == "key":
+            controller = Gtk.EventControllerKey.new()
+            controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+            def captured(_controller, keyval, keycode, _state):
+                index = recording["index"]
+                if index is None: return False
+                if keyval != Gdk.KEY_Escape:
+                    try: name = control_bindings.physical_key_name(keycode)
+                    except OSError as error:
+                        self.toasts.add_toast(Adw.Toast(title=str(error)))
+                        name = None
+                    if name in options: dropdowns[index].set_selected(options.index(name))
+                recording["index"] = None
+                for button in record_buttons: button.set_label("Record")
+                return True
+            controller.connect("key-pressed", captured)
+            group.add_controller(controller)
+            # Retain a handle for keyboard-event regression tests.
+            dialog.record_controller = controller
         dialog.set_extra_child(group)
         dialog.add_response("cancel", tr("Cancel"))
         dialog.add_response("save", tr("Save"))
