@@ -35,6 +35,8 @@ import game_check  # noqa: E402
 import steam_shortcuts  # noqa: E402
 import control_bindings
 import native_update
+import library
+from library_ui import LibraryMixin
 
 PACKAGED = bool(os.environ.get("BB_PREBUILT"))
 
@@ -68,7 +70,7 @@ PRESENT_MODES = [("Mailbox", "Mailbox"), ("FIFO (VSync)", "Fifo"),
 # TroyWarez from https://github.com/illusionyy/PS-Game-Patch): bbport.ini key,
 # label, note. The in-game menu edits the same keys.
 PATCHES = [
-    ("patch_60fps", "60 FPS unlock", "By illusion. 60 in menus, 40-45 in races on a Steam Deck"),
+    ("patch_60fps", "60 FPS unlock", "Requires restart"),
     ("patch_no_motion_blur", "Disable motion blur", "By illusion"),
     ("patch_pro_1080p", "1080p in PS4 Pro mode", "By TroyWarez; only with PS4 Pro mode below"),
 ]
@@ -88,10 +90,15 @@ DEFAULTS = {
     "save_log": False,
     "mangohud": False,
     "stats_interval": "1000",
+    "display": "",
+    "dlc_enabled": True,
+    "dlc_disabled": [],
     "vk_validation": False,
     "extra_env": "",
 }
-INI_DEFAULTS = {"show_fps": "0", **{key: "0" for key, _, _ in PATCHES}}
+INI_DEFAULTS = {"show_fps": "0", "fps_limit": "60", "render_res": "1080",
+                "temporal": "fsr1", "async_pipelines": "0", "fsr3_sharpness": "0.3",
+                "sharpness": "0.7", **{key: "0" for key, _, _ in PATCHES}}
 
 
 def load_settings():
@@ -153,8 +160,13 @@ def game_environment(s):
     if s["user_dir"]:
         env["BB_USER_DIR"] = s["user_dir"]
     env["BB_LANGUAGE"] = s["language"]
+    if s.get("display"):
+        env["BB_DISPLAY"] = s["display"]
+    env["BB_DLC"] = "1" if s.get("dlc_enabled", True) else "0"
+    env["BB_DLC_DISABLED"] = ",".join(s.get("dlc_disabled", []))
     env["BB_MENU_LANGUAGE"] = language()
-    env["BB_FULLSCREEN"] = "1" if s["fullscreen"] else "0"
+    values, _ = load_ini()
+    env["BB_FULLSCREEN"] = values.get("fullscreen", "1" if s["fullscreen"] else "0")
     env["BB_PRESENT_MODE"] = s["present_mode"]
     if s.get("gamepad"):
         env["BB_GAMEPAD"] = s["gamepad"]
@@ -184,12 +196,22 @@ def game_environment(s):
 
 def connected_gamepads():
     """(GUID, name) of the connected gamepads (bb-gpu-capabilities --gamepads), [] if unknown."""
-    tool = PORT_DIR / ("bin" if PACKAGED else "out") / "bb-gpu-capabilities"
+    tool = Path(os.environ["BB_PROBE"]).parent / "bb-gpu-capabilities" if os.environ.get("BB_PROBE") else PORT_DIR / ("bin" if PACKAGED else "out") / "bb-gpu-capabilities"
     try:
         run = subprocess.run([str(tool), "--gamepads"], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
         return []
     return [tuple(line.split("\t", 1)) for line in run.stdout.splitlines() if "\t" in line]
+
+
+def connected_displays():
+    tool = Path(os.environ["BB_PROBE"]).parent / "bb-gpu-capabilities" if os.environ.get("BB_PROBE") else PORT_DIR / ("bin" if PACKAGED else "out") / "bb-gpu-capabilities"
+    try:
+        run = subprocess.run([str(tool), "--displays"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [(parts[0], parts[1]) for line in run.stdout.splitlines()
+            if len(parts := line.split("\t")) >= 2]
 
 
 def flat_button(icon, tooltip, handler):
@@ -245,7 +267,7 @@ def install_game_icon(game_dir):
         return False
 
 
-class LauncherWindow(Adw.ApplicationWindow):
+class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=f"{TITLE} {port_version()}".rstrip())
         if install_game_icon(self.settings["game_dir"] if hasattr(self, "settings") else load_settings()["game_dir"]):
@@ -254,7 +276,12 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.settings = load_settings()
         set_language(self.settings.get("ui_language", ""))
         self.ini, self.ini_lines = load_ini()
+        if "fullscreen" in self.ini:
+            self.settings["fullscreen"] = self.ini["fullscreen"] == "1"
         self.process = None
+        self.library_busy = False
+        self.closing = False
+        self.syncing_settings = False
         self.stream = None
         self.build()
         self.connect("close-request", self.on_close)
@@ -277,6 +304,7 @@ class LauncherWindow(Adw.ApplicationWindow):
                                         "preferences-system-symbolic")
         self.stack.add_titled_with_icon(self.build_controls_page(), "controls", tr("Controls"),
                                         "input-gaming-symbolic")
+        self.stack.add_titled_with_icon(self.build_library_page(), "library", "Library", "folder-symbolic")
         self.stack.add_titled_with_icon(self.build_log_page(), "log", tr("Log"),
                                         "utilities-terminal-symbolic")
         self.update_launch_button()
@@ -294,7 +322,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
 
         game = Adw.PreferencesGroup(title=tr("Game"),
-                                    description=tr("The dumped game with its 1.21 update merged over the base (eboot.bin, sce_module, ...)"))
+                                    description="Select a prepared 1.21 game folder, or use Library → Prepare Game.")
         self.game_row = Adw.ActionRow(title=tr("Game folder"))
         self.game_status = Gtk.Image(valign=Gtk.Align.CENTER)
         self.game_row.add_suffix(self.game_status)
@@ -311,36 +339,63 @@ class LauncherWindow(Adw.ApplicationWindow):
         page.add(game)
 
         controls = Adw.PreferencesGroup(title=tr("Controller"),
-                                        description=tr("Any connected gamepad plus the keyboard; the one used last takes over. "
-                                                       "Split-screen ports are assigned in the in-game menu (Insert / L3+R3)."))
+                                        description="Player assignments and mappings are in Controls.")
         pads = connected_gamepads()
         choices = [(tr("First connected"), "")] + [(name, guid) for guid, name in pads]
         if self.settings["gamepad"] and self.settings["gamepad"] not in [g for g, _ in pads]:
             choices.append((tr("{} (not connected)").format(self.settings["gamepad_name"] or self.settings["gamepad"]), self.settings["gamepad"]))
         self.gamepad_row = combo_row(tr("Controller"), None, choices, self.settings["gamepad"])
         controls.add(self.gamepad_row)
-        page.add(controls)
+        # Controller selection is unified with per-player assignment in Controls.
 
         patches = Adw.PreferencesGroup(title=tr("Game patches"),
-                                       description=tr("From patches/CrashTeamRacing.xml (illusionyy/PS-Game-Patch), applied at start; "
-                                                      "also in the in-game menu"))
+                                       description="Apply on the next launch.")
         self.patch_rows = {}
         for key, label, note in PATCHES:
             row = Adw.SwitchRow(title=tr(label), subtitle=tr(note), active=self.ini.get(key) == "1")
-            patches.add(row)
+            if key != "patch_pro_1080p":
+                patches.add(row)
             self.patch_rows[key] = row
         page.add(patches)
 
         console = Adw.PreferencesGroup(title=tr("Console"))
         self.neo_row = Adw.SwitchRow(title=tr("PS4 Pro mode"),
-                                     subtitle=tr("Neo mode, 7 CPUs, 5568 MiB direct memory: the game's Pro rendering path"),
+                                     subtitle="",
                                      active=self.settings["neo"])
         console.add(self.neo_row)
-        page.add(console)
+        # The selected resolution now chooses the console rendering path automatically.
 
         screen = Adw.PreferencesGroup(title=tr("Display"))
         self.fullscreen_row = Adw.SwitchRow(title=tr("Fullscreen"), active=self.settings["fullscreen"])
         screen.add(self.fullscreen_row)
+        displays = connected_displays()
+        display_choices = [("Primary monitor", "")] + [(name + " · " + size, name) for name, size in displays]
+        if self.settings["display"] and self.settings["display"] not in [v for _, v in display_choices]:
+            display_choices.append((self.settings["display"] + " (not connected)", self.settings["display"]))
+        self.display_row = combo_row("Monitor", None, display_choices, self.settings["display"])
+        screen.add(self.display_row)
+        self.render_row = combo_row("Internal resolution", "Applied on the next launch or in-game restart",
+            [(f"{n}p", str(n)) for n in (480, 720, 1080, 1440, 1620, 2160)], self.ini["render_res"])
+        screen.add(self.render_row)
+        self.upscale_row = combo_row("Upscaling", "DLSS is unavailable in the Linux runtime; FSR 3 is experimental",
+            [("Off", "off"), ("AMD FSR 1", "fsr1"), ("AMD FSR 3", "fsr3")], self.ini["temporal"])
+        screen.add(self.upscale_row)
+        self.fsr_row = combo_row("FSR 1 sharpness", None,
+            [(str(n / 10), str(n / 10)) for n in range(0, 21)], self.ini["sharpness"])
+        screen.add(self.fsr_row)
+        self.fsr3_row = combo_row("FSR 3 sharpness", None,
+            [(str(n / 10), str(n / 10)) for n in range(0, 11)], self.ini["fsr3_sharpness"])
+        screen.add(self.fsr3_row)
+        self.limit_row = combo_row("Frame rate limit", "Higher rates require the 60 FPS unlock patch",
+            [("Uncapped", "0")] + [(str(n), str(n)) for n in (30, 60, 72, 90, 120, 144, 240)], self.ini["fps_limit"])
+        screen.add(self.limit_row)
+        self.limit_row.connect("notify::selected", self.on_fps_limit_selected)
+        self.patch_rows["patch_60fps"].connect("notify::active", self.on_fps_patch_changed)
+        if self.ini.get("patch_60fps") != "1":
+            self.limit_row.set_selected(self.limit_row.values.index("30"))
+        self.async_row = Adw.SwitchRow(title="Compile shaders in the background",
+            subtitle="Experimental: new effects may appear late", active=self.ini["async_pipelines"] == "1")
+        screen.add(self.async_row)
         self.present_row = combo_row(tr("Presentation"), None, PRESENT_MODES, self.settings["present_mode"])
         screen.add(self.present_row)
         self.fps_row = Adw.SwitchRow(title=tr("FPS counter in the corner"), active=self.ini.get("show_fps") == "1")
@@ -357,28 +412,30 @@ class LauncherWindow(Adw.ApplicationWindow):
         statistics.add(self.stats_interval_row)
         page.add(statistics)
 
-        dev = Adw.PreferencesGroup(title=tr("Developer"))
+        dev = Adw.ExpanderRow(title="Diagnostics and advanced options")
         self.stats_row = Adw.SwitchRow(title=tr("Frame statistics in the log"), active=self.settings["frame_stats"])
-        dev.add(self.stats_row)
+        dev.add_row(self.stats_row)
         self.save_log_row = Adw.SwitchRow(title=tr("Save the log to a file (logs/)"), active=self.settings["save_log"])
-        dev.add(self.save_log_row)
+        dev.add_row(self.save_log_row)
         self.cache_row = Adw.SwitchRow(title=tr("Clear the shader cache at start"),
-                                       subtitle=tr("The cache is kept by default so known areas do not compile shaders mid-race; clear it after GPU driver updates or rendering glitches"),
+                                       subtitle="Use after a driver update or visual glitches",
                                        active=self.settings["clear_shader_cache"])
-        dev.add(self.cache_row)
+        dev.add_row(self.cache_row)
         self.validation_row = Adw.SwitchRow(title=tr("Vulkan validation layer (slow)"), active=self.settings["vk_validation"])
-        dev.add(self.validation_row)
+        dev.add_row(self.validation_row)
         self.env_row = Adw.EntryRow(title=tr("Extra environment (VAR=value ...)"), text=self.settings["extra_env"])
-        dev.add(self.env_row)
+        dev.add_row(self.env_row)
         self.ui_language_row = combo_row(tr("Launcher language"), tr("Applies after restarting the launcher"),
                                          UI_LANGUAGES, self.settings["ui_language"])
-        dev.add(self.ui_language_row)
-        page.add(dev)
+        dev.add_row(self.ui_language_row)
+        advanced = Adw.PreferencesGroup()
+        advanced.add(dev)
+        page.add(advanced)
 
         steam = Adw.PreferencesGroup(title=tr("Steam"))
         exe, _start, _options = steam_shortcuts.launcher_command()
         steam_row = Adw.ActionRow(title=tr("Add to Steam"),
-                                  subtitle=tr("A non-Steam shortcut that starts the game with these settings (Steam Deck game mode). Close Steam before adding."))
+                                  subtitle="Close Steam before adding.")
         steam_row.set_tooltip_text(exe)
         add_button = Gtk.Button(label=tr("Add"), valign=Gtk.Align.CENTER)
         add_button.connect("clicked", self.on_add_to_steam)
@@ -402,6 +459,26 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.update_user_status()
         return page
 
+    def on_fps_limit_selected(self, row, _param):
+        if self.syncing_settings:
+            return
+        if combo_value(row) != "30":
+            self.patch_rows["patch_60fps"].set_active(True)
+
+    def on_fps_patch_changed(self, row, _param):
+        if self.syncing_settings:
+            return
+        if row.get_active() and hasattr(self, "limit_row") and combo_value(self.limit_row) == "30":
+            self.limit_row.set_selected(self.limit_row.values.index("60"))
+        if not row.get_active() and hasattr(self, "limit_row"):
+            self.limit_row.set_selected(self.limit_row.values.index("30"))
+
+    def library_data(self):
+        return DATA_DIR
+
+    def persist_library_settings(self):
+        save_settings(self.settings)
+
     def game_dir(self):
         return Path(self.settings["game_dir"]).expanduser()
 
@@ -421,16 +498,18 @@ class LauncherWindow(Adw.ApplicationWindow):
             tooltip = tr("No eboot.bin in the folder")
         elif problem:
             tooltip = game_check.explain(*problem)
-            self.game_row.set_subtitle(f"{path}\n{tooltip}")
+            self.game_row.set_subtitle("Update 1.21 required — use Library → Prepare Game" if problem[0] in ("missing_update", "wrong_eboot") else "Game files need attention — see the warning tooltip")
         elif profile and profile["name"] != "ctr":
             tooltip = tr("This is {}; this launcher runs Crash Team Racing: Nitro-Fueled").format(profile["game"])
             problem = ("other_title", profile["title"], profile["version"])
-            self.game_row.set_subtitle(f"{path}\n{tooltip}")
+            self.game_row.set_subtitle("Update 1.21 required — use Library → Prepare Game" if problem[0] in ("missing_update", "wrong_eboot") else "Game files need attention — see the warning tooltip")
         else:
             tooltip = f"{GAME} {profile['title']}, {profile['version']}"
         self.game_status.set_from_icon_name("object-select-symbolic" if ok and not problem else "dialog-warning-symbolic")
         self.game_status.set_tooltip_text(tooltip)
         self.launch_button.set_sensitive((ok and not problem) or self.process is not None)
+        if hasattr(self, "save_list"):
+            self.refresh_library()
 
     def choose_folder(self, title, initial, chosen):
         dialog = Gtk.FileDialog(title=title, modal=True)
@@ -468,11 +547,12 @@ class LauncherWindow(Adw.ApplicationWindow):
     def store(self):
         s = self.settings
         s["language"] = combo_value(self.language_row)
-        s["gamepad"] = combo_value(self.gamepad_row)
-        s["gamepad_name"] = self.gamepad_row.get_selected_item().get_string() if s["gamepad"] else ""
+        s["gamepad"] = combo_value(self.port_rows[1])
+        s["gamepad_name"] = self.port_rows[1].get_selected_item().get_string() if s["gamepad"] else ""
         s["neo"] = self.neo_row.get_active()
         s["fullscreen"] = self.fullscreen_row.get_active()
         s["present_mode"] = combo_value(self.present_row)
+        s["display"] = combo_value(self.display_row)
         s["mangohud"] = self.mangohud_row.get_active()
         s["stats_interval"] = combo_value(self.stats_interval_row)
         s["frame_stats"] = self.stats_row.get_active()
@@ -482,6 +562,14 @@ class LauncherWindow(Adw.ApplicationWindow):
         s["extra_env"] = self.env_row.get_text()
         s["ui_language"] = combo_value(self.ui_language_row)
         save_settings(s)
+        self.ini, self.ini_lines = load_ini()
+        for key, row in (("render_res", self.render_row), ("temporal", self.upscale_row),
+                         ("fps_limit", self.limit_row), ("sharpness", self.fsr_row), ("fsr3_sharpness", self.fsr3_row)):
+            self.ini[key] = combo_value(row)
+        self.ini["async_pipelines"] = "1" if self.async_row.get_active() else "0"
+        self.ini["fullscreen"] = "1" if self.fullscreen_row.get_active() else "0"
+        for port, row in getattr(self, "port_rows", {}).items():
+            self.ini[f"port.{port}"] = combo_value(row)
         for key, row in self.patch_rows.items():
             self.ini[key] = "1" if row.get_active() else "0"
         self.ini["show_fps"] = "1" if self.fps_row.get_active() else "0"
@@ -618,6 +706,18 @@ class LauncherWindow(Adw.ApplicationWindow):
 
     def build_controls_page(self):
         page = Adw.PreferencesPage()
+        ports = Adw.PreferencesGroup(title="Split-screen controllers",
+            description="Ports 2–4 activate extra players when assigned controllers connect. Settings apply on the next launch.")
+        self.port_rows = {}
+        pads = connected_gamepads()
+        for port in range(1, 5):
+            current = self.ini.get(f"port.{port}", self.settings["gamepad"] if port == 1 else "")
+            choices = [("Automatic" if port == 1 else "Not assigned", "")] + [(name, guid) for guid, name in pads]
+            if current and current not in [v for _, v in choices]: choices.append((current + " (not connected)", current))
+            row = combo_row(f"Player {port}", None, choices, current)
+            ports.add(row)
+            self.port_rows[port] = row
+        page.add(ports)
         self.binding_rows = {}
         for prefix, title, note in (
             ("key", "Keyboard", "Physical key positions. Select up to four keys per action."),
@@ -747,6 +847,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         GLib.idle_add(lambda: adj.set_value(adj.get_upper()) and False)
 
     def on_launch(self, _button):
+        if self.library_busy:
+            return
         if self.process:
             self.stop_game()
             return
@@ -766,6 +868,8 @@ class LauncherWindow(Adw.ApplicationWindow):
         self.read_line()
         self.process.wait_async(None, self.on_exit)
         self.update_launch_button()
+        self.stack.get_child_by_name("settings").set_sensitive(False)
+        self.stack.get_child_by_name("controls").set_sensitive(False)
         self.stack.set_visible_child_name("log")
 
     def read_line(self):
@@ -807,14 +911,45 @@ class LauncherWindow(Adw.ApplicationWindow):
             pass
         status = process.get_exit_status() if process.get_if_exited() else -1
         self.process = None
+        self.stack.get_child_by_name("settings").set_sensitive(True)
+        self.stack.get_child_by_name("controls").set_sensitive(True)
         self.update_launch_button()
+        self.ini, self.ini_lines = load_ini()
+        self.syncing_settings = True
+        for key, row in (("render_res", self.render_row), ("temporal", self.upscale_row),
+                         ("fps_limit", self.limit_row), ("sharpness", self.fsr_row), ("fsr3_sharpness", self.fsr3_row)):
+            value = self.ini.get(key)
+            if value in row.values: row.set_selected(row.values.index(value))
+        self.async_row.set_active(self.ini.get("async_pipelines") == "1")
+        if "fullscreen" in self.ini:
+            self.fullscreen_row.set_active(self.ini["fullscreen"] == "1")
+            self.settings["fullscreen"] = self.fullscreen_row.get_active()
+            save_settings(self.settings)
+        self.fps_row.set_active(self.ini.get("show_fps") == "1")
+        for key, row in self.patch_rows.items(): row.set_active(self.ini.get(key) == "1")
+        for port, row in self.port_rows.items():
+            value = self.ini.get(f"port.{port}", "")
+            if value not in row.values:
+                row.values.append(value)
+                row.get_model().append(value + " (not connected)")
+            row.set_selected(row.values.index(value))
+        self.syncing_settings = False
+        self.refresh_binding_rows()
         self.update_game_status()
+        self.refresh_library()
         self.append_log(tr("\n— the game exited (code {}) —\n").format(status))
+        if self.closing:
+            GLib.idle_add(self.close)
 
     def on_close(self, _window):
-        self.store()
+        if self.library_busy:
+            self.library_error("Wait for the current file operation before closing")
+            return True
         if self.process:
+            self.closing = True
             self.stop_game()
+            return True
+        self.store()
         return False
 
 

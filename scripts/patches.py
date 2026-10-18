@@ -198,6 +198,15 @@ def external_patches(directory, app_version=APP_VERSION, title_id=TITLE_ID):
     return found
 
 
+def available_patches(directory, app_version=APP_VERSION, title_id=TITLE_ID):
+    """Bundled patches plus user XML; a user entry with the same key overrides the bundle."""
+    bundled = Path(__file__).resolve().parent.parent / 'patches'
+    found = {key: (key, path, meta) for key, path, meta in external_patches(bundled, app_version, title_id)}
+    if Path(directory).resolve() != bundled.resolve():
+        found.update({key: (key, path, meta) for key, path, meta in external_patches(directory, app_version, title_id)})
+    return list(found.values())
+
+
 def external_selection(found, config, ini=None):
     """Selected patches: patches.json {"enabled": [...], "disabled": [...]} overrides each file's
     isEnabled; bbport.ini patch_* keys (GAME_PATCH_KEYS, the in-game menu) add to it."""
@@ -263,7 +272,7 @@ def main():
     a=p.parse_args()
     elf=(a.out/'eboot.elf').read_bytes()
     segments=eboot_segments(elf)
-    found=external_patches(a.patches_dir,a.app_version,a.title_id)
+    found=available_patches(a.patches_dir,a.app_version,a.title_id)
     settings=read_settings(a.settings)
     writes=compile_external(external_selection(found,a.patches_config,settings)+render_patches(settings),
                             segments,elf)

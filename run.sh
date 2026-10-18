@@ -75,12 +75,17 @@ fi
 # https://github.com/illusionyy/PS-Game-Patch), chosen in the in-game menu (bbport.ini patch_*
 # keys) or patches.json; BB_PATCHES_DIR adds a folder of further shadPS4-format XML files.
 fps=${BB_FPS:-30}
-"$PYTHON" scripts/patches.py --patches-dir "${BB_PATCHES_DIR:-patches}" --patches-config "${BB_PATCHES_CONFIG:-$data/patches.json}" \
+"$PYTHON" scripts/patches.py --patches-dir "${BB_PATCHES_DIR:-$data/patches}" --patches-config "${BB_PATCHES_CONFIG:-$data/patches.json}" \
     --app-version "$app_version" --title-id "$title_id" --out "$out" --settings "$BB_CONFIG"
 patch_args=(--patches "$out/patches.bin")
 # BB_NEO=1: PS4 Pro mode (sceKernelIsNeoMode, 7-CPU mode, 5568 MiB direct memory); the game then
 # picks its Pro rendering path. Off by default: the Steam Deck is closer to a base PS4.
 export BB_NEO=${BB_NEO:-0}
+render_config=$("$PYTHON" scripts/render_config.py --settings "$BB_CONFIG" --neo "$BB_NEO" --memory "${BB_DMEM_MB:-0}")
+IFS=$'\t' read -r BB_NEO render_memory render_label <<< "$render_config"
+export BB_NEO
+if (( render_memory > 0 )); then export BB_DMEM_MB=$render_memory; fi
+echo "Internal resolution: $render_label"
 echo "PS4 Pro mode: ${BB_NEO} (BB_NEO=1 turns it on)"
 # The on-disk shader/pipeline cache (user/cache/CUSA13795) is kept across launches: the GPU
 # library preloads every pipeline from earlier sessions at start, so areas seen before no longer
@@ -193,14 +198,22 @@ echo "SacredFire ${version:-unknown version}"
 export BB_GPU_USER_DIR=${BB_USER_DIR:-$data/user}
 mkdir -p "$BB_GPU_USER_DIR"
 probe_args=("$out/boot-linked.bin" --import-names "$out/import_names.txt" --content-profile "$out/content.bin" "${patch_args[@]}" --app0 "$game" --user "${BB_USER_DIR:-$data/user}" --timeout "${BB_TIMEOUT:-0}" "$@")
-if [[ -n ${mod_game:-} ]]; then
-    "$probe" "${probe_args[@]}" &
-    mod_pid=$!
-    trap 'kill -TERM "$mod_pid" 2>/dev/null || true' TERM INT
-    mod_status=0
-    wait "$mod_pid" || mod_status=$?
-    # An interrupted wait must finish the child before removing its mounted view.
-    if kill -0 "$mod_pid" 2>/dev/null; then wait "$mod_pid" || mod_status=$?; fi
-    exit "$mod_status"
+# Wait instead of exec so the in-game Apply and restart action works on Linux too.
+"$probe" "${probe_args[@]}" &
+game_pid=$!
+trap 'kill -TERM "$game_pid" 2>/dev/null || true' TERM INT
+game_status=0
+wait "$game_pid" || game_status=$?
+if kill -0 "$game_pid" 2>/dev/null; then wait "$game_pid" || game_status=$?; fi
+if (( game_status == 75 )); then
+    if [[ -n ${mod_game:-} ]]; then
+        "$PYTHON" -c 'import shutil,sys; shutil.rmtree(sys.argv[1])' "$mod_game"
+    fi
+    trap - EXIT
+    export BB_GAME_DIR=$original_game
+    # Preserve the in-game display choice across a full process restart.
+    saved_fullscreen=$("$PYTHON" -c 'import sys; sys.path.insert(0,"scripts"); from patches import read_settings; from pathlib import Path; print(read_settings(Path(sys.argv[1])).get("fullscreen",sys.argv[2]))' "$BB_CONFIG" "${BB_FULLSCREEN:-0}")
+    export BB_FULLSCREEN=$saved_fullscreen
+    exec bash "$0" "$@"
 fi
-exec "$probe" "${probe_args[@]}"
+exit "$game_status"

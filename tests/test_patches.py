@@ -205,5 +205,15 @@ class RegionalPatchTests(unittest.TestCase):
         self.assertEqual(patches.external_patches(ROOT / 'patches', '01.21', 'CUSA00000'), [])
 
 
+
+
+class PatchCatalogTests(unittest.TestCase):
+    def test_user_directory_keeps_bundled_patches_and_filters_editions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            found = patches.available_patches(Path(folder), '01.21', 'CUSA14876')
+            self.assertEqual({key for key, _, _ in found}, set(patches.GAME_PATCH_KEYS.values()))
+            self.assertEqual(patches.available_patches(Path(folder), '01.21', 'CUSA00000'), [])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -135,12 +135,20 @@ class ModTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mods.selected(self.moddir, config)
 
+    def test_restart_recreates_overlay_and_keeps_original_game_source(self):
+        self.run_overlay(restart=True)
+
     def test_run_uses_overlay_propagates_exit_and_cleans_view(self):
+        self.run_overlay(restart=False)
+
+    def run_overlay(self, restart):
         self.mod('A')
         python = self.root / 'python'
         python.write_text(f'#!{sys.executable}\nimport subprocess,sys\n'
             'if sys.argv[1] == "scripts/game_check.py":\n'
             "    print('{\"name\":\"ctr\",\"title\":\"CUSA13795\",\"version\":\"01.21\"}')\n"
+            'elif sys.argv[1] == "scripts/render_config.py":\n'
+            '    print("0\\t0\\tGame default")\n'
             'elif sys.argv[1] == "scripts/mods.py" or sys.argv[1] == "-c":\n'
             '    sys.exit(subprocess.call([sys.executable,*sys.argv[1:]]))\n')
         python.chmod(0o755)
@@ -149,13 +157,17 @@ class ModTests(unittest.TestCase):
             'game=Path(sys.argv[sys.argv.index("--app0")+1])\n'
             'Path(os.environ["BB_DATA_DIR"],"mounted.json").write_text(json.dumps({\n'
             '"path":str(game),"content":(game/"dvdroot_ps4/chr/a.dcx").read_text()}))\n'
-            'sys.exit(7)\n')
+            'record=Path(os.environ["BB_DATA_DIR"],"launches")\n'
+            'n=int(record.read_text()) if record.exists() else 0\n'
+            'record.write_text(str(n+1))\n'
+            f'sys.exit(75 if {restart!r} and n == 0 else 7)\n')
         probe.chmod(0o755)
         env = dict(os.environ, BB_PREBUILT='1', BB_PROBE=str(probe), PYTHON=str(python),
             BB_DATA_DIR=str(self.root), BB_GAME_DIR=str(self.game),
             BB_MODS_DIR=str(self.moddir), BB_MODS_ENABLED='1', BB_MODS_CONFIG=str(self.root/'mods.json'))
         result = subprocess.run(['bash', 'run.sh'], cwd=ROOT, env=env, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 7, result.stderr)
+        self.assertEqual((self.root / 'launches').read_text(), '2' if restart else '1')
         mounted = json.loads((self.root / 'mounted.json').read_text())
         self.assertEqual(mounted['content'], 'mod')
         self.assertFalse(Path(mounted['path']).exists())

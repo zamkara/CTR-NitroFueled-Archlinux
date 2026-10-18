@@ -59,10 +59,14 @@ set to one or two seconds. MangoHud is installed with the native package. Existi
 The lightweight built-in FPS counter remains a separate option; enabling both produces
 two counters. Settings also apply to the direct-play shortcut.
 
+The expanded launcher includes graphics, frame limits, monitor/window mode, per-player
+controllers, save management, DLC and additional XML patches. Details and honest limits:
+[Linux features and validation](docs/FEATURES.md).
+
 ## Prepare your game
 
-Extract your own decrypted base game and update into separate folders. Merge the update using
-upstream's hard-link tool; this does not alter the original game folders:
+Extract your own decrypted base game and update into separate folders. Open **Library → Prepare Game**
+and select both. You can also merge them with the hard-link tool; original dumps remain unchanged:
 
 ```bash
 python /usr/lib/ctr-nitrofueled/tools/merge_update.py /path/to/base /path/to/update /path/to/merged

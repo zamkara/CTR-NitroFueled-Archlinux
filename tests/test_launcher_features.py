@@ -72,6 +72,80 @@ class LauncherFeatureTests(unittest.TestCase):
         with patch.dict(os.environ, {'MANGOHUD_CONFIG': 'fps_only'}, clear=True):
             self.assertEqual(launcher.game_environment(saved)['MANGOHUD_CONFIG'], 'fps_only')
 
+    def test_graphics_ports_and_window_mode_share_runtime_settings(self):
+        self.window.render_row.set_selected(self.window.render_row.values.index('720'))
+        self.window.upscale_row.set_selected(self.window.upscale_row.values.index('fsr3'))
+        self.window.limit_row.set_selected(self.window.limit_row.values.index('144'))
+        self.window.fullscreen_row.set_active(True)
+        self.window.async_row.set_active(True)
+        self.window.port_rows[2].values.append('test-controller-guid')
+        self.window.port_rows[2].get_model().append('Test controller')
+        self.window.port_rows[2].set_selected(1)
+        self.window.store()
+        values, _ = launcher.load_ini()
+        for key, expected in {'render_res':'720','temporal':'fsr3','fps_limit':'144',
+                              'fullscreen':'1','async_pipelines':'1','port.2':'test-controller-guid'}.items():
+            self.assertEqual(values[key],expected)
+        self.assertNotIn('dlss', self.window.upscale_row.values)
+        self.assertEqual(launcher.game_environment(launcher.load_settings())['BB_FULLSCREEN'], '1')
+        # The running game's menu is authoritative after it exits.
+        values.update(fullscreen='0', fps_limit='72', render_res='1080')
+        launcher.save_ini(values, [])
+        class Exited:
+            def wait_finish(self, _result): pass
+            def get_if_exited(self): return True
+            def get_exit_status(self): return 0
+        self.window.on_exit(Exited(), None)
+        self.assertFalse(self.window.fullscreen_row.get_active())
+        self.assertEqual(launcher.combo_value(self.window.limit_row),'72')
+        self.window.store()
+        self.assertEqual(launcher.game_environment(launcher.load_settings())['BB_FULLSCREEN'], '0')
+
+    def test_library_failure_and_retry_do_not_block_gtk(self):
+        self.window.library_task('Fixture operation', lambda: (_ for _ in ()).throw(OSError('fixture failure')))
+        deadline = time.monotonic() + 3
+        while self.window.library_busy and time.monotonic() < deadline: self.drain(0.02)
+        self.assertFalse(self.window.library_busy)
+        self.assertTrue(self.window.library_retry.get_visible())
+        # No configured game is allowed to replace the operation error with an empty-state message.
+        self.assertIn('fixture failure',self.window.library_status.get_subtitle())
+        self.window.library_task('Fixture operation', lambda: 'success')
+        deadline = time.monotonic() + 3
+        while self.window.library_busy and time.monotonic() < deadline: self.drain(0.02)
+        self.assertFalse(self.window.library_retry.get_visible())
+        self.assertIn('success',self.window.library_status.get_subtitle())
+
+    def test_higher_frame_limit_enables_required_unlock_patch(self):
+        self.window.limit_row.set_selected(self.window.limit_row.values.index('144'))
+        self.assertTrue(self.window.patch_rows['patch_60fps'].get_active())
+        self.window.store()
+        values, _ = launcher.load_ini()
+        self.assertEqual((values['fps_limit'], values['patch_60fps']),('144','1'))
+        self.window.patch_rows['patch_60fps'].set_active(False)
+        self.assertEqual(launcher.combo_value(self.window.limit_row),'30')
+        self.window.patch_rows['patch_60fps'].set_active(True)
+        self.assertEqual(launcher.combo_value(self.window.limit_row),'60')
+
+    def test_library_lists_managed_dlc_and_additional_patch_switches(self):
+        directory = launcher.DATA_DIR / 'patches'
+        directory.mkdir()
+        (directory / 'extra.xml').write_text('<Patch><TitleID><ID>CUSA14876</ID></TitleID><Metadata Name="Extra" AppVer="01.21" AppElf="eboot.bin"><PatchList/></Metadata></Patch>')
+        dlc = launcher.DATA_DIR / 'dlc'
+        dlc.mkdir()
+        (dlc / 'own.pkg').write_bytes(b'fixture')
+        with patch.object(launcher.game_check, 'sfo_info', return_value={'TITLE_ID':'CUSA14876'}), \
+             patch.object(launcher.library.content_profile,'find_addons',return_value=[('CTRDELUXEPACK001','Deluxe','own.pkg')]):
+            self.window.refresh_library()
+        row = self.window.dlc_list_rows[0]
+        self.assertIsInstance(row,Adw.SwitchRow)
+        row.set_active(False)
+        self.assertIn('CTRDELUXEPACK001',launcher.load_settings()['dlc_disabled'])
+        extra = self.window.extra_patch_rows[0]
+        self.assertIsInstance(extra,Adw.SwitchRow)
+        extra.set_active(True)
+        config = json.loads((launcher.DATA_DIR / 'patches.json').read_text())
+        self.assertIn('extra.xml/Extra',config['enabled'])
+
     def dropdowns(self, widget):
         result = [widget] if isinstance(widget, Gtk.DropDown) else []
         child = widget.get_first_child()

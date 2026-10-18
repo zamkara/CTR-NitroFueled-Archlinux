@@ -45,6 +45,8 @@ build() {
     export BB_GPU_USER_DIR="$srcdir/test-user"
     install -d "$BB_GPU_USER_DIR"
     bash build.sh --test
+    cmake --build out/gpu --target settings-test
+    out/gpu/settings-test
 }
 
 check() {

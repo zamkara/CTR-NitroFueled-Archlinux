@@ -28,7 +28,8 @@ int main() {
 
     BbSettings::Load();
     auto& s = BbSettings::Get();
-    assert(s.upscaler == BbSettings::UpscalerFsr3 && !s.show_fps && s.menu_x < 0.0f);
+    // CTR intentionally disables bbport's Bloodborne-specific upscaler on load.
+    assert(s.upscaler == BbSettings::UpscalerOff && !s.show_fps && s.menu_x < 0.0f);
     s.show_fps = true;
     s.upscaler = BbSettings::UpscalerFsr411;
     s.menu_x = 0.625f;
@@ -46,7 +47,22 @@ int main() {
     s.menu_x = -1.0f;
     s.menu_y = -1.0f;
     BbSettings::Load();
-    assert(s.menu_x == 0.625f && s.menu_y == 0.125f && s.upscaler == BbSettings::UpscalerFsr411);
+    assert(s.menu_x == 0.625f && s.menu_y == 0.125f && s.upscaler == BbSettings::UpscalerOff);
+    // An explicit windowed launch overrides persisted fullscreen; toggles persist both ways.
+    s.fullscreen = true;
+    BbSettings::Save();
+    setenv("BB_FULLSCREEN", "0", 1);
+    BbSettings::Load();
+    assert(!s.fullscreen);
+    setenv("BB_FULLSCREEN", "1", 1);
+    BbSettings::Load();
+    assert(s.fullscreen);
+    unsetenv("BB_FULLSCREEN");
+    s.fullscreen = false;
+    BbSettings::Save();
+    BbSettings::Load();
+    assert(!s.fullscreen);
+    assert(Read(path).find("fullscreen=0\n") != std::string::npos);
     unlink(path);
     std::puts("PASS: settings save keeps other keys, menu position");
 }

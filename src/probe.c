@@ -450,14 +450,12 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
     fclose(f);
     printf("Patches: %" PRIu64 " writes, %" PRIu64 " bytes applied, %" PRIu64 " pointers rebased\n",count,bytes,rebased);
 }
-/* Restarts the game through run.sh (the settings menu: a new render resolution is a patch
- * applied at start). Descriptors are closed first so the old GPU device and its memory are
- * released before the new process opens its own. */
+/* Restarts through the platform wrapper after releasing the old process and GPU resources.
+ * New render-resolution patches and saved display settings are applied on the next launch. */
 volatile int runtime_restarting;
 void runtime_restart(void) {
     fflush(NULL);
-    /* The GPU threads still run until exec: their Vulkan calls fail once the device fd is
-     * closed below, and an assertion there must not end the process (exit 23) before exec. */
+    /* Keep exit-time GPU failures from overriding a requested restart. */
     runtime_restarting = 1;
     __sync_synchronize();
 #ifdef _WIN32
@@ -487,11 +485,10 @@ void runtime_restart(void) {
     /* The new launch waits for this process's GPU device to go away (run.py --after). */
     TerminateProcess(GetCurrentProcess(),0);
 #else
+    /* Let run.sh release this process's GPU resources and mod view before relaunching.
+     * The wrapper reloads saved display/render settings instead of inheriting stale overrides. */
     puts("Runtime: restarting through run.sh");
-    syscall(SYS_close_range, 3u, ~0u, 0u);
-    execlp("bash", "bash", "run.sh", (char *)NULL);
-    perror("runtime_restart: exec");
-    _exit(1);
+    _exit(75);
 #endif
 }
 

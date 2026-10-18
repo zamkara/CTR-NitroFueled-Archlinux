@@ -532,9 +532,19 @@ void Menu() {
         const int current = std::clamp(s.temporal.load(), 0, BbSettings::TemporalCount - 1);
         if (ImGui::BeginCombo(BbSettings::MenuText("Upscaling", "Апскейл"), labels[current])) {
             for (int t = 0; t < BbSettings::TemporalCount; ++t) {
+#ifndef _WIN32
+                // The NGX bridge in this source tree only implements Windows.
+                ImGui::BeginDisabled(t == BbSettings::TemporalDlss);
+#endif
                 if (ImGui::Selectable(labels[t], t == current)) {
                     Store(s.temporal, t, t != current);
                 }
+#ifndef _WIN32
+                if (t == BbSettings::TemporalDlss && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip("The DLSS bridge is Windows only in this build");
+                }
+                ImGui::EndDisabled();
+#endif
             }
             ImGui::EndCombo();
         }

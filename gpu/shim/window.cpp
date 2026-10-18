@@ -86,8 +86,8 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     const char* fullscreen_env = std::getenv("BB_FULLSCREEN");
     // SacredFire: the setting already folds BB_FULLSCREEN in (Load runs before the window is
     // created); the environment is read again here in case it does not.
-    const bool fullscreen = (fullscreen_env && fullscreen_env[0] == '1') ||
-                            BbSettings::Get().fullscreen.load(std::memory_order_relaxed);
+    const bool fullscreen = fullscreen_env ? fullscreen_env[0] == '1'
+                                          : BbSettings::Get().fullscreen.load(std::memory_order_relaxed);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, fullscreen);
     base_title = title;
     window = SDL_CreateWindowWithProperties(props);
