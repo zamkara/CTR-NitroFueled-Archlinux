@@ -1,0 +1,2817 @@
+diff --git a/docs/CUSA14876.md b/docs/CUSA14876.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..56a0ece72fca0861c9f94b4ebe207d1ed52600eb
+--- /dev/null
++++ b/docs/CUSA14876.md
+@@ -0,0 +1,76 @@
++# CUSA14876 validation
++
++This fork adds an experimental profile for the European 1.21 executable. It does not
++assume that every regional executable shares the upstream CUSA13795 patch addresses.
++No game files or proprietary executable bytes are distributed by this repository.
++
++## Identity checks
++
++The loaded executable image must have SHA-256:
++
++```
++6b93d1f682fbfc5340dfd08360c8c0522a40f34585ec525c41537c40772bb39c
++```
++
++Its `sce_sys/param.sfo` must report `TITLE_ID=CUSA14876` and `APP_VER=01.21`.
++An unknown European executable is rejected even when its metadata claims 1.21.
++The known base 1.00 executable is rejected; pairing its bytes with 1.21 metadata does
++not pass validation. Existing CUSA13795 behavior is retained.
++
++Extract the matching base and update separately, then use `tools/merge_update.py` to
++create a separate merged directory. Do not mix region metadata or executable files.
++The game folder is read-only to the runtime; generated data and saves are separate.
++
++## Observed native results
++
++A local test on an NVIDIA GeForce GTX 1650 verified:
++
++```
++Crash™ Team Racing Nitro-Fueled | entry=0x80 | image=46,065,261 bytes
++Update build: CUSA14876 01.21 (validated-1.21; sdk_ver=06008000); patch sites are found by signature
++713 imported symbols; 473,760 relocations; 52 required modules
++libc _init_env verified RET: True
++Linked modules: libc.prx@0x2bf0000, libSceFios2.prx@0x2d20000, libSceNpToolkit2.prx@0x2eb0000; 290 native bindings, 730 imports left to the host runtime, fs->gs patched=3747
++Import names: 730 imports, 729 named, 1 unnamed
++```
++
++The native renderer displayed the Beenox intro, opened an eight-channel audio
++port and reached the title screen with the “Press X to Begin” prompt during a
++120-second bounded test. This establishes native initialization and intro rendering, not completed
++races, stable frame pacing or full gameplay compatibility. The user's separate
++shadPS4 title-screen test is not counted as native-port evidence.
++
++Three matching DLC entitlement packages were detected:
++
++```
++Runtime: add-on CTRDELUXEPACK001 (installed)
++Runtime: add-on CTRPREORDERPACK1 (installed)
++Runtime: add-on CTRCODEKART00001 (installed)
++AppContent profile: SKU=full (probe setting), user params=[1, 0, 0, 0], add-ons=3
++```
++
++Detection does not prove every DLC item is usable in gameplay. Point `BB_DLC_DIR`
++at the directory containing your matching DLC packages. Other regions are filtered.
++
++## Patch validation
++
++All three bundled community patches produced one validated write each. Actual image
++offsets found for the 60 FPS and Pro 1080p patches were `0x13a9d80` and `0x13a9da4`.
++The 480p and 720p render patches produced three writes each, 1620p one, and 2160p two.
++1080p and 1440p use the game's own paths and require no render-scale writes.
++Every relocated patch site must match a unique signature; missing or ambiguous sites
++are skipped. This checks byte placement, not performance or visual quality at every resolution.
++
++## Remaining validation
++
++Complete races, saving/loading, each DLC item, regional non-English languages,
++resolution changes during gameplay and long sessions remain unverified. The launcher's
++language list is inherited from upstream; only the default English was used here.
++
++## Regression checks
++
++The local suite discovered 133 tests: 105 passed and 28 were skipped because the
++C test binaries were not built locally. GTK integration used the desktop display
++with the Cairo renderer and an in-memory settings backend. CI builds the C binaries
++before running the full suite in an isolated display; its result is tracked separately.
++The launch-script overlay fixture was updated for the new JSON profile protocol.
+diff --git a/docs/FEATURES.md b/docs/FEATURES.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..aff70efa3d54328caefd9ef864ac128fd60ab6d9
+--- /dev/null
++++ b/docs/FEATURES.md
+@@ -0,0 +1,101 @@
++# Linux launcher features and validation
++
++The GTK launcher and direct-play shortcut use the same settings and `bbport.ini`.
++The Linux package remains independent of upstream's Windows distribution.
++
++| Feature | Linux behavior |
++| --- | --- |
++| Game setup | Library → Prepare Game selects separate matching base/update dumps and creates a new merged view; original dumps are preserved. |
++| Regional validation | CUSA13795 and the pinned CUSA14876 1.21 executable; unknown European builds are rejected. |
++| Internal resolution | 480p, 720p, 1080p, 1440p, 1620p, 2160p; Linux now selects the corresponding rendering path and memory budget, as Windows does. Restart required. |
++| Upscaling | Off, FSR 1, experimental FSR 3; sharpness controls are written to the runtime's own keys. |
++| DLSS | Unavailable: the upstream NGX bridge implements Windows only. It is not offered by the GTK launcher and is disabled in the Linux in-game menu. No Linux DLSS quality/model support is claimed. |
++| FPS limit | 30, 60, 72, 90, 120, 144, 240 and uncapped. Selecting more than 30 automatically enables the required unlock patch. Disabling that patch returns the launcher limit to 30. |
++| Shader compilation | Optional experimental background compilation; effects can appear late. |
++| Game window | Fullscreen/windowed, presentation mode and monitor selection. Saved in-game fullscreen changes are reloaded by the launcher and retained across Apply and restart. Windowed dimensions are independent of internal render resolution. |
++| Controllers | Player 1–4 assignment and keyboard/gamepad mappings. Analog axes retain the native runtime behavior. |
++| Saves | Per-player/per-region listing, backup, restore, export and decrypted PS4/runtime save import. Existing saves are backed up before replacement. |
++| DLC | Import matching own packages, enable/disable individual entitlements, remove managed packages. Sources outside the managed DLC folder are never removed. |
++| Patches | Bundled community switches plus additional matching XML patches from the data patches directory. Unique signature validation remains mandatory for relocated writes. |
++| Statistics | Built-in FPS counter and MangoHud FPS, frame time, CPU/GPU, memory and resolution. FPS sampling: one or two seconds. |
++| Diagnostics | Collapsed advanced options and the Log page, with export. |
++| Updates | Manual native-package update check and the checksummed installer. |
++| Steam | Existing integration launches the same saved configuration. |
++
++## Important limits
++
++An FPS limit is a ceiling, not a performance promise. Reaching 120+ FPS depends on
++CPU/GPU load, drivers, resolution and the scene. The stock game remains 30 FPS
++without the unlock patch. Patches apply on the next launch or Apply and restart.
++The 60 FPS unlock does not guarantee 60 FPS, and high rates need gameplay testing.
++
++FSR 3 is experimental temporal upscaling, not a promise of frame generation.
++New options are wired to existing renderer behavior; every combination has not been
++benchmarked on every GPU. The CUSA14876 title screen and main menu were observed
++locally on an NVIDIA GTX 1650; complete races and long sessions remain unverified.
++
++Runtime save imports accept a folder containing slot directories and matching
++`<slot>.sce_sys/param.bin`. Decrypted PS4 saves need `sce_sys/param.sfo` with a
++matching title and valid `SAVEDATA_DIRECTORY`; encrypted PS4 saves are not decrypted.
++Exports and new backups include an edition marker. Legacy runtime backups without
++that marker cannot independently prove their region: select the correct edition.
++Symbolic links/special files are rejected. An existing save is backed up before
++staging and publication; a publication error rolls back the active folder. This
++is not a guarantee of crash/power-loss durability. SaveDataMemory files outside
++the edition's save directory are not included, matching upstream's save-folder scope.
++
++File operations require the game to be stopped. Another independently launched game
++process can still write the same saves; stop that process as well. Keep a separate
++backup before importing third-party data. Identical controller models can share an
++SDL GUID, so individual physical-device assignment may remain ambiguous.
++
++Network gameplay is unchanged: socket/HTTP/PSN services remain offline stubs.
++Local split-screen does not imply online matchmaking support.
++
++## Verification
++
++Regression tests cover render-plan memory selection, automatic FPS patch activation,
++fullscreen synchronization, restart/mod-view cleanup, DLC/patch GTK controls, matching
++edition checks, source preservation, save metadata conversion, backup failure,
++publication rollback, safe export and rejected symbolic links/path traversal.
++The C++ settings check covers both fullscreen transitions and explicit windowed
++startup overriding persisted fullscreen. CI now runs that target during packaging.
++
++Local native runtime checks link the existing installed renderer; this is distinct
++from a full renderer rebuild. Changed window and overlay sources receive separate
++compile checks. The release workflow rebuilds the complete renderer and runtime,
++runs the test suite, installs in a fresh Arch environment and opens the launcher
++before publishing. No game files are uploaded to CI, so CI does not establish
++hardware gameplay or DLC item compatibility.
++
++### Local results for this change
++
++```
++Ran 152 tests in 9.155s
++OK
++PASS: settings save keeps other keys, menu position
++PASS: pad ABI, debug camera chord, left/right clicks, SDL touch coordinates, overlay capture, controls, stick calibration
++PASS: AppContent lifecycle, profile and output boundaries
++PASS: AppContent add-ons
++PASS: event flag contracts
++```
++
++The Python result above has no skipped tests. The native pad, runtime, file-mod,
++semaphore, content and event-flag programs were built and executed locally using
++the installed renderer. The settings test separately checked explicit windowed
++startup, fullscreen startup and persistence back to windowed. Game-window/overlay
++C++ compile checks and shell/Python syntax checks also passed. A live desktop
++observation showed the CUSA14876 main menu and MangoHud statistics after selecting
++the prepared folder; this was not a full gameplay benchmark or proof of 120 FPS.
++
++Native game startup was also observed through Hyprland, with isolated test saves:
++
++```
++{"requested": "windowed", "fullscreen": 0, "fullscreenClient": 0, "size": [763, 1028]}
++{"requested": "fullscreen", "fullscreen": 2, "fullscreenClient": 2, "size": [1920, 1080]}
++PASS: native game windowed and fullscreen startup observed on Hyprland
++```
++
++The windowed size was assigned by the tiling compositor. This test used the newly
++compiled runtime with the installed renderer. Live menu toggling was checked at
++the settings/persistence layer, not by an automated mouse interaction with the game.
+diff --git a/gpu/CMakeLists.txt b/gpu/CMakeLists.txt
+index 0db2870f1b4547a6ebaf04e13ed742e53a6f18a0..a0a38cac985c4a59d63157c2ec2cb581336f9068 100644
+--- a/gpu/CMakeLists.txt
++++ b/gpu/CMakeLists.txt
+@@ -197,7 +197,8 @@ target_compile_definitions(bbgpu PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+     BB_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
+ set_source_files_properties(shim/bbport_overlay.cpp PROPERTIES
+     OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
+-target_include_directories(bbgpu PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include)
++target_include_directories(bbgpu PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include
++                                       third_party/xbyak)
+ target_compile_definitions(bbgpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
+ target_compile_options(bbgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
+ # Loaded with bb-probe at startup (DT_NEEDED, never dlopen): thread_local access without a
+@@ -215,7 +216,6 @@ if (WIN32)
+     # <windows.h> out of the way of std::min/max and the Vulkan/SDL headers.
+     target_compile_definitions(bbgpu PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+     target_compile_options(bbgpu PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/shim/bb_win_compat.h)
+-    target_include_directories(bbgpu PRIVATE third_party/xbyak)
+     target_link_libraries(bbgpu PUBLIC Vulkan::Vulkan ws2_32 bcrypt ntdll synchronization winmm)
+ else()
+     target_link_libraries(bbgpu PUBLIC PkgConfig::X11)
+diff --git a/gpu/shim/bbport_overlay.cpp b/gpu/shim/bbport_overlay.cpp
+index 0d98669183b649f18d69b652184ae11407a8ac31..9036ed527c8e3843590f7a511e2af0055c217408 100644
+--- a/gpu/shim/bbport_overlay.cpp
++++ b/gpu/shim/bbport_overlay.cpp
+@@ -532,9 +532,19 @@ void Menu() {
+         const int current = std::clamp(s.temporal.load(), 0, BbSettings::TemporalCount - 1);
+         if (ImGui::BeginCombo(BbSettings::MenuText("Upscaling", "Апскейл"), labels[current])) {
+             for (int t = 0; t < BbSettings::TemporalCount; ++t) {
++#ifndef _WIN32
++                // The NGX bridge in this source tree only implements Windows.
++                ImGui::BeginDisabled(t == BbSettings::TemporalDlss);
++#endif
+                 if (ImGui::Selectable(labels[t], t == current)) {
+                     Store(s.temporal, t, t != current);
+                 }
++#ifndef _WIN32
++                if (t == BbSettings::TemporalDlss && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
++                    ImGui::SetTooltip("The DLSS bridge is Windows only in this build");
++                }
++                ImGui::EndDisabled();
++#endif
+             }
+             ImGui::EndCombo();
+         }
+diff --git a/gpu/shim/window.cpp b/gpu/shim/window.cpp
+index ef0aed4915f5867dc50efba1115f2b6f112c59f9..2d556b1412d9e55d02a173c001b48b3633fea510 100644
+--- a/gpu/shim/window.cpp
++++ b/gpu/shim/window.cpp
+@@ -86,8 +86,8 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
+     const char* fullscreen_env = std::getenv("BB_FULLSCREEN");
+     // SacredFire: the setting already folds BB_FULLSCREEN in (Load runs before the window is
+     // created); the environment is read again here in case it does not.
+-    const bool fullscreen = (fullscreen_env && fullscreen_env[0] == '1') ||
+-                            BbSettings::Get().fullscreen.load(std::memory_order_relaxed);
++    const bool fullscreen = fullscreen_env ? fullscreen_env[0] == '1'
++                                          : BbSettings::Get().fullscreen.load(std::memory_order_relaxed);
+     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, fullscreen);
+     base_title = title;
+     window = SDL_CreateWindowWithProperties(props);
+diff --git a/launcher/control_bindings.py b/launcher/control_bindings.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bc0466e0954de4a35cddaa09614bfd55e47e8ce6
+--- /dev/null
++++ b/launcher/control_bindings.py
+@@ -0,0 +1,136 @@
++"""SDL binding names and the runtime's key.*/pad.* configuration format."""
++import ctypes
++from functools import lru_cache
++
++KEY_DEFAULTS = {
++    'move_up': 'W', 'move_down': 'S', 'move_left': 'A', 'move_right': 'D',
++    'cross': 'Space', 'square': 'E', 'circle': 'Left Shift', 'triangle': 'Q',
++    'l1': '1', 'r1': '3', 'l2': 'R', 'r2': 'F', 'l3': 'Z', 'r3': 'C',
++    'options': 'Return', 'touchpad': 'Tab', 'touchpad_right': 'Backspace',
++    'up': 'I', 'down': 'K', 'left': 'J', 'right': 'L',
++    'look_up': 'Up', 'look_down': 'Down', 'look_left': 'Left', 'look_right': 'Right',
++}
++PAD_DEFAULTS = {
++    'cross': 'a', 'circle': 'b', 'square': 'x', 'triangle': 'y',
++    'l1': 'leftshoulder', 'r1': 'rightshoulder', 'l2': 'lefttrigger', 'r2': 'righttrigger',
++    'l3': 'leftstick', 'r3': 'rightstick', 'options': 'start', 'touchpad': 'back,touchpad',
++    'touchpad_right': '', 'up': 'dpup', 'down': 'dpdown', 'left': 'dpleft', 'right': 'dpright',
++}
++LABELS = {
++    'move_up': 'Left stick up', 'move_down': 'Left stick down',
++    'move_left': 'Left stick left', 'move_right': 'Left stick right',
++    'look_up': 'Right stick up', 'look_down': 'Right stick down',
++    'look_left': 'Right stick left', 'look_right': 'Right stick right',
++    'cross': 'Cross / accelerate', 'square': 'Square / brake', 'options': 'Options / pause',
++    'touchpad': 'Touchpad left', 'touchpad_right': 'Touchpad right',
++    'up': 'D-pad up', 'down': 'D-pad down', 'left': 'D-pad left', 'right': 'D-pad right',
++}
++
++
++@lru_cache(maxsize=1)
++def sdl():
++    lib = ctypes.CDLL('libSDL3.so.0')
++    for name in ('SDL_GetScancodeName', 'SDL_GetGamepadStringForButton'):
++        fn = getattr(lib, name)
++        fn.argtypes = [ctypes.c_int]
++        fn.restype = ctypes.c_char_p
++    return lib
++
++
++@lru_cache(maxsize=2)
++def choices(prefix):
++    if prefix == 'key':
++        values = [sdl().SDL_GetScancodeName(i) for i in range(512)]
++    elif prefix == 'pad':
++        values = [sdl().SDL_GetGamepadStringForButton(i) for i in range(32)]
++        values += [b'lefttrigger', b'righttrigger']
++    else:
++        raise ValueError('Unknown binding type')
++    return tuple(sorted({v.decode() for v in values if v}, key=str.casefold))
++
++
++def defaults(prefix):
++    return KEY_DEFAULTS if prefix == 'key' else PAD_DEFAULTS
++
++
++def binding(values, prefix, action):
++    return values.get(f'{prefix}.{action}', defaults(prefix)[action])
++
++
++def normalized(prefix, names):
++    names = list(dict.fromkeys(name for name in names if name))
++    if len(names) > 4 or any(name not in choices(prefix) for name in names):
++        raise ValueError('Select up to four supported bindings')
++    return ','.join(names)
++
++
++def reset(values, lines, prefix):
++    keys = {f'{prefix}.{action}' for action in defaults(prefix)}
++    return ({k: v for k, v in values.items() if k not in keys},
++            [line for line in lines if line.lstrip().startswith('#') or line.split('=', 1)[0].strip() not in keys])
++
++
++PAD_LABELS = {
++    'a': 'A / South', 'b': 'B / East', 'x': 'X / West', 'y': 'Y / North',
++    'back': 'Back / Share', 'start': 'Start / Menu', 'guide': 'Guide',
++    'leftshoulder': 'Left shoulder', 'rightshoulder': 'Right shoulder',
++    'lefttrigger': 'Left trigger', 'righttrigger': 'Right trigger',
++    'leftstick': 'Left stick press', 'rightstick': 'Right stick press',
++    'dpup': 'D-pad up', 'dpdown': 'D-pad down', 'dpleft': 'D-pad left', 'dpright': 'D-pad right',
++    'touchpad': 'Touchpad press',
++}
++
++
++def display_name(prefix, name):
++    return PAD_LABELS.get(name, name.replace('_', ' ').title()) if prefix == 'pad' else name
++
++
++@lru_cache(maxsize=1)
++def physical_keymap():
++    """GDK's Linux hardware keycodes use the XKB keycode space on X11 and Wayland."""
++    import atexit
++    lib = ctypes.CDLL('libxkbcommon.so.0')
++    class Names(ctypes.Structure):
++        _fields_ = [(name, ctypes.c_char_p) for name in ('rules','model','layout','variant','options')]
++    lib.xkb_context_new.argtypes = [ctypes.c_int]
++    lib.xkb_context_new.restype = ctypes.c_void_p
++    lib.xkb_keymap_new_from_names.argtypes = [ctypes.c_void_p, ctypes.POINTER(Names), ctypes.c_int]
++    lib.xkb_keymap_new_from_names.restype = ctypes.c_void_p
++    lib.xkb_keymap_key_get_syms_by_level.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.POINTER(ctypes.c_uint))]
++    lib.xkb_keymap_key_get_syms_by_level.restype = ctypes.c_int
++    lib.xkb_keysym_get_name.argtypes = [ctypes.c_uint, ctypes.c_char_p, ctypes.c_size_t]
++    lib.xkb_context_unref.argtypes = [ctypes.c_void_p]
++    lib.xkb_keymap_unref.argtypes = [ctypes.c_void_p]
++    context = lib.xkb_context_new(0)
++    if not context: raise OSError('Could not initialize keyboard recording')
++    keymap = lib.xkb_keymap_new_from_names(context, ctypes.byref(Names(b'evdev',b'pc105',b'us',b'',b'')),0)
++    if not keymap:
++        lib.xkb_context_unref(context)
++        raise OSError('Could not load the physical keyboard map')
++    atexit.register(lambda: (lib.xkb_keymap_unref(keymap), lib.xkb_context_unref(context)))
++    return lib, keymap
++
++
++def physical_key_name(keycode):
++    """Canonical SDL physical name for a GDK hardware code; unknown codes remain unbound."""
++    lib, keymap = physical_keymap()
++    symbols = ctypes.POINTER(ctypes.c_uint)()
++    if lib.xkb_keymap_key_get_syms_by_level(keymap, keycode, 0, 0, ctypes.byref(symbols)) != 1:
++        return None
++    text = ctypes.create_string_buffer(128)
++    if lib.xkb_keysym_get_name(symbols[0], text, len(text)) <= 0: return None
++    name = text.value.decode()
++    aliases = {'Shift_L':'Left Shift','Shift_R':'Right Shift','Control_L':'Left Ctrl','Control_R':'Right Ctrl',
++               'Alt_L':'Left Alt','Alt_R':'Right Alt','Super_L':'Left GUI','Super_R':'Right GUI',
++               'space':'Space','Prior':'PageUp','Next':'PageDown','Caps_Lock':'CapsLock',
++               'Num_Lock':'Numlock','Scroll_Lock':'ScrollLock','Print':'PrintScreen',
++               'KP_Enter':'Keypad Enter','KP_Add':'Keypad +','KP_Subtract':'Keypad -',
++               'KP_Multiply':'Keypad *','KP_Divide':'Keypad /','KP_Delete':'Keypad .',
++               'KP_Insert':'Keypad 0','KP_End':'Keypad 1','KP_Down':'Keypad 2','KP_Next':'Keypad 3',
++               'KP_Left':'Keypad 4','KP_Begin':'Keypad 5','KP_Right':'Keypad 6','KP_Home':'Keypad 7',
++               'KP_Up':'Keypad 8','KP_Prior':'Keypad 9','semicolon':';','apostrophe':"'",'grave':'`',
++               'minus':'-','equal':'=','bracketleft':'[','bracketright':']','backslash':'\\',
++               'comma':',','period':'.','slash':'/'}
++    name = aliases.get(name, name.upper() if len(name) == 1 else name)
++    canonical = {choice.casefold():choice for choice in choices('key')}
++    return canonical.get(name.casefold())
+diff --git a/launcher/library.py b/launcher/library.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ff09eb93a4a7f8994bd092df2c8e9d3a1e8e3f0d
+--- /dev/null
++++ b/launcher/library.py
+@@ -0,0 +1,238 @@
++# SPDX-License-Identifier: GPL-2.0-or-later
++"""Local game library operations. Never modify the original dumps or imported saves."""
++import json
++import os
++from pathlib import Path
++import re
++import shutil
++import struct
++import subprocess
++import sys
++import tempfile
++import time
++import uuid
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT / 'scripts'))
++import game_check
++import content_profile
++from prepare import sfo
++
++
++def safe_name(value):
++    if not value or value in ('.', '..') or not re.fullmatch(r'[A-Za-z0-9_.-]{1,31}', value):
++        raise ValueError('Invalid save slot name')
++    return value
++
++
++def checked_tree(folder):
++    folder = Path(folder)
++    if folder.is_symlink() or not folder.is_dir():
++        raise ValueError('Select a regular directory')
++    for root, dirs, files in os.walk(folder, followlinks=False):
++        for name in dirs + files:
++            p = Path(root) / name
++            if p.is_symlink() or not (p.is_dir() or p.is_file()):
++                raise ValueError('Symbolic links and special files are not accepted in saves')
++    return folder
++
++
++def copy_new(source, target):
++    source = checked_tree(source)
++    target = Path(target)
++    if target.resolve().is_relative_to(source.resolve()):
++        raise ValueError('Destination must be outside the source directory')
++    target.parent.mkdir(parents=True, exist_ok=True)
++    stage = Path(tempfile.mkdtemp(prefix='.copy-', dir=target.parent))
++    try:
++        shutil.copytree(source, stage, dirs_exist_ok=True)
++        if source.name in game_check.BY_TITLE:
++            (stage / '.ctr-save.json').write_text(json.dumps({'title': source.name}) + '\n')
++        if target.exists():
++            raise ValueError('Destination already exists')
++        stage.rename(target)
++    finally:
++        if stage.exists():
++            shutil.rmtree(stage)
++    return target
++
++
++def prepare_game(base, update, data):
++    # Reuse the upstream merge tool, but always publish to a new directory.
++    sys.path.insert(0, str(ROOT / 'tools'))
++    from merge_update import layout
++    base, update, data = map(Path, (base, update, data))
++    def info(folder):
++        trees = layout(folder)
++        if not trees:
++            raise ValueError('The selected dump has no executable and metadata')
++        for root, prefix in trees:
++            path = root / 'param.sfo' if str(prefix) == 'sce_sys' else root / 'sce_sys/param.sfo'
++            if path.is_file():
++                return sfo(path.read_bytes()), root
++        raise ValueError('Game metadata is missing')
++    b, _ = info(base)
++    u, executable_root = info(update)
++    if b.get('TITLE_ID') != u.get('TITLE_ID') or b.get('TITLE_ID') not in game_check.BY_TITLE:
++        raise ValueError('Select matching supported base and update editions')
++    if b.get('CATEGORY') != 'gd' or u.get('CATEGORY') != 'gp' or u.get('APP_VER') != '01.21':
++        raise ValueError('Select a base game and its 1.21 update')
++    # Validate executable bytes against update metadata, including split-layout dumps.
++    digest = game_check.image_sha256(executable_root)
++    expected = game_check.SUPPORTED.get(digest)
++    if expected and expected['title'] != u['TITLE_ID']:
++        raise ValueError('Update executable and metadata belong to different editions')
++    if digest in game_check.OLD_IMAGES or (u['TITLE_ID'] == 'CUSA14876' and digest != game_check.EU_IMAGE):
++        raise ValueError('The update executable is not a supported 1.21 build')
++    parent = data / 'prepared'
++    for source in (base, update):
++        if parent.resolve().is_relative_to(source.resolve()):
++            raise ValueError('Prepared output must be outside the source dumps')
++    parent.mkdir(parents=True, exist_ok=True)
++    target = parent / (u['TITLE_ID'] + '-1.21-' + uuid.uuid4().hex[:8])
++    try:
++        subprocess.run([sys.executable, str(ROOT / 'tools/merge_update.py'), str(base), str(update), str(target)],
++                       check=True, capture_output=True, text=True)
++        issue = game_check.problem(target)
++        if issue:
++            raise ValueError(game_check.explain(*issue))
++        for module in game_check.BY_TITLE[u['TITLE_ID']]['modules']:
++            if not (target / 'sce_module' / module).is_file():
++                raise ValueError(f'Required module is missing: {module}')
++        return target
++    except Exception:
++        shutil.rmtree(target, ignore_errors=True)
++        raise
++
++
++def save_root(user, title, player='1'):
++    if title not in game_check.BY_TITLE or not str(player).isdigit():
++        raise ValueError('Select a supported game and a valid player')
++    return Path(user) / 'savedata' / str(player) / title
++
++
++def backup(source, backups):
++    source = Path(source)
++    if not source.is_dir() or not any(source.iterdir()):
++        raise ValueError('No saves to back up')
++    return copy_new(source, Path(backups) / ('saves-' + time.strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8]))
++
++
++def validate_runtime_saves(folder):
++    folder = checked_tree(folder)
++    slots = []
++    for item in folder.iterdir():
++        if item.is_dir() and not item.name.endswith(('.sce_sys', '.memory')):
++            safe_name(item.name)
++            meta = folder / (item.name + '.sce_sys') / 'param.bin'
++            if not meta.is_file() or meta.stat().st_size != 1328:
++                raise ValueError('A save slot is missing its 1328-byte param.bin')
++            slots.append(item)
++    if not slots:
++        raise ValueError('No recognized runtime save slots in this folder')
++    return folder
++
++
++def install_saves(source, destination, backups, replace=False, title=None):
++    """Stage a complete replacement; retain a backup and roll back if publication fails."""
++    source = validate_runtime_saves(source)
++    marker = source / '.ctr-save.json'
++    source_title = json.loads(marker.read_text()).get('title') if marker.exists() else (source.name if source.name in game_check.BY_TITLE else None)
++    if title and source_title and title != source_title:
++        raise ValueError('The save backup belongs to another game edition')
++    destination = Path(destination)
++    if source.resolve() == destination.resolve() or source.resolve().is_relative_to(destination.resolve()) or destination.resolve().is_relative_to(source.resolve()):
++        raise ValueError('Import source and active saves must be separate')
++    if destination.is_symlink():
++        raise ValueError('Active saves must not be a symbolic link')
++    destination.parent.mkdir(parents=True, exist_ok=True)
++    with tempfile.TemporaryDirectory(prefix='.save-stage-', dir=destination.parent) as temp:
++        staged = Path(temp) / 'ready'
++        if destination.exists() and any(destination.iterdir()):
++            backup(destination, backups)  # failure aborts before modifying active saves
++            if not replace:
++                shutil.copytree(checked_tree(destination), staged)
++        staged.mkdir(exist_ok=True)
++        for item in source.iterdir():
++            target = staged / item.name
++            if target.is_dir(): shutil.rmtree(target)
++            elif target.exists(): target.unlink()
++            if item.is_dir(): shutil.copytree(item, target)
++            else: shutil.copy2(item, target)
++        previous = Path(temp) / 'previous'
++        existed = destination.exists()
++        if existed:
++            destination.rename(previous)
++        try:
++            staged.rename(destination)
++        except Exception:
++            if existed:
++                previous.rename(destination)
++            raise
++    return destination
++
++
++def import_saves(source, destination, backups, title):
++    source = checked_tree(source)
++    param = source / 'sce_sys/param.sfo'
++    if not param.exists():
++        return install_saves(source, destination, backups, title=title)
++    info = sfo(param.read_bytes())
++    if info.get('TITLE_ID') != title:
++        raise ValueError('The decrypted save belongs to another game edition')
++    slot = safe_name(info.get('SAVEDATA_DIRECTORY', ''))
++    with tempfile.TemporaryDirectory(prefix='ctr-save-import-') as temp:
++        root = Path(temp)
++        target = root / slot
++        target.mkdir()
++        for p in source.iterdir():
++            if p.name != 'sce_sys':
++                if p.is_dir(): shutil.copytree(p, target / p.name)
++                else: shutil.copy2(p, target / p.name)
++        if not any(target.iterdir()):
++            raise ValueError('The decrypted save contains no data files')
++        meta = root / (slot + '.sce_sys')
++        meta.mkdir()
++        def text(key, size):
++            return str(info.get(key, '')).encode('utf-8')[:size-1].ljust(size, b'\0')
++        blob = text('MAINTITLE',128) + text('SUBTITLE',128) + text('DETAIL',1024)
++        blob += struct.pack('<Ii q32s', int(info.get('SAVEDATA_PARAMS',0)) & 0xffffffff, 0, int(time.time()), b'')
++        (meta / 'param.bin').write_bytes(blob)
++        icon = source / 'sce_sys/icon0.png'
++        if icon.is_file(): shutil.copy2(icon, meta / 'icon0.png')
++        return install_saves(root, destination, backups, title=title)
++
++
++def add_dlc(source, directory, title):
++    source, directory = Path(source), Path(directory)
++    if source.is_symlink() or not source.is_file() or source.suffix.lower() != '.pkg':
++        raise ValueError('Select a regular DLC package')
++    info = content_profile.pkg_param(source)
++    content = info.get('CONTENT_ID','')
++    if info.get('CATEGORY') != 'ac' or info.get('TITLE_ID') != title or content[7:16] != title:
++        raise ValueError('The package is not a DLC for the selected edition')
++    label = content[20:]
++    if not re.fullmatch('[A-Za-z0-9_-]{1,16}', label):
++        raise ValueError('Invalid DLC entitlement label')
++    directory.mkdir(parents=True, exist_ok=True)
++    target = directory / (title + '-' + label + '.pkg')
++    if target.exists():
++        raise ValueError('This DLC is already installed')
++    stage = directory / ('.dlc-' + uuid.uuid4().hex)
++    try:
++        shutil.copy2(source, stage)
++        os.replace(stage, target)
++    finally:
++        stage.unlink(missing_ok=True)
++    return target
++
++
++def remove_dlc(source, directory, title):
++    source, directory = Path(source), Path(directory)
++    if source.is_symlink() or source.parent.resolve() != directory.resolve() or not source.is_file():
++        raise ValueError('Only regular packages in the managed DLC directory can be removed')
++    info = content_profile.pkg_param(source)
++    if info.get('CATEGORY') != 'ac' or info.get('TITLE_ID') != title or info.get('CONTENT_ID', '')[7:16] != title:
++        raise ValueError('The package is not a matching DLC')
++    source.unlink()
++    return 'DLC removed from the managed library'
+diff --git a/launcher/library_ui.py b/launcher/library_ui.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..acffe9f0883af693208636fd477ca38cb7a42a06
+--- /dev/null
++++ b/launcher/library_ui.py
+@@ -0,0 +1,285 @@
++# SPDX-License-Identifier: GPL-2.0-or-later
++"""GTK library pages using the launcher's existing Adwaita components."""
++import json
++import os
++from pathlib import Path
++import threading
++import uuid
++from gi.repository import Adw, Gio, GLib, Gtk
++import library
++import game_check
++import patches
++
++
++class LibraryMixin:
++    def action(self, group, title, label, callback, subtitle=''):
++        row = Adw.ActionRow(title=title, subtitle=subtitle)
++        button = Gtk.Button(label=label, valign=Gtk.Align.CENTER)
++        button.connect('clicked', callback)
++        row.add_suffix(button)
++        group.add(row)
++        return row
++
++    def build_library_page(self):
++        page = Adw.PreferencesPage()
++        setup = Adw.PreferencesGroup(title='Game setup', description='Original base and update dumps remain unchanged. A new merged folder is created for each preparation.')
++        self.action(setup, 'Base game and 1.21 update', 'Prepare Game', self.on_prepare_game)
++        page.add(setup)
++        self.library_status = Adw.ActionRow(title='Ready', subtitle='Select a prepared game to manage its library.')
++        self.library_spinner = Gtk.Spinner()
++        self.library_status.add_suffix(self.library_spinner)
++        self.library_retry = Gtk.Button(label='Retry', valign=Gtk.Align.CENTER, visible=False)
++        self.library_retry.connect('clicked', lambda _b: self.library_retry_action())
++        self.library_status.add_suffix(self.library_retry)
++        state = Adw.PreferencesGroup()
++        state.add(self.library_status)
++        page.add(state)
++        saves = Adw.PreferencesGroup(title='Saves', description='Imports and restores create a backup before changing existing saves. Stop the game first.')
++        self.save_player = Gtk.StringList.new(['Player 1', 'Player 2', 'Player 3', 'Player 4'])
++        self.save_player_row = Adw.ComboRow(title='Player', model=self.save_player)
++        self.save_player_row.connect('notify::selected', lambda *_: self.refresh_library())
++        saves.add(self.save_player_row)
++        self.action(saves, 'Save slots and backups', 'Refresh', lambda _b: self.refresh_library())
++        self.action(saves, 'Back up current saves', 'Back Up', self.on_backup_saves)
++        self.action(saves, 'Restore a backup', 'Restore', self.on_restore_saves)
++        self.action(saves, 'Export current saves', 'Export', self.on_export_saves)
++        self.action(saves, 'Import runtime or decrypted PS4 saves', 'Import', self.on_import_saves)
++        self.save_list = Adw.PreferencesGroup(title='Save slots')
++        self.save_list_rows = []
++        page.add(saves)
++        page.add(self.save_list)
++        dlc = Adw.PreferencesGroup(title='Downloadable content', description='Only matching entitlement packages from your own dumps are accepted.')
++        self.dlc_switch = Adw.SwitchRow(title='Enable DLC', active=self.settings['dlc_enabled'])
++        self.dlc_switch.connect('notify::active', self.on_dlc_enabled)
++        dlc.add(self.dlc_switch)
++        self.action(dlc, 'Add a matching DLC package', 'Add', self.on_add_dlc)
++        page.add(dlc)
++        self.dlc_list = Adw.PreferencesGroup(title='Installed DLC')
++        self.dlc_list_rows = []
++        page.add(self.dlc_list)
++        self.extra_patches = Adw.PreferencesGroup(title='Additional XML patches',
++            description='Bundled community patches are in Settings. Copy additional XML files into your data patches folder, then refresh. Missing or ambiguous signatures are skipped at launch.')
++        self.action(self.extra_patches, 'Reload patch files', 'Refresh', lambda _b: self.refresh_library())
++        self.extra_patch_rows = []
++        page.add(self.extra_patches)
++        # Refresh after the window has completed building all controls.
++        GLib.idle_add(self.refresh_library)
++        return page
++
++    def library_context(self):
++        DATA_DIR = self.library_data()
++        info = game_check.sfo_info(self.game_dir())
++        title = info.get('TITLE_ID')
++        if title not in game_check.BY_TITLE:
++            raise ValueError('Select a supported prepared game first')
++        player = str(self.save_player_row.get_selected() + 1)
++        return title, library.save_root(self.user_dir(), title, player), DATA_DIR / 'backups' / title / player
++
++    def library_task(self, title, operation, completed=None):
++        if self.library_busy or self.process:
++            self.library_status.set_title('Stop the game and wait for the current operation first')
++            return
++        self.library_busy = True
++        self.library_spinner.start()
++        self.library_status.set_title(title)
++        self.library_status.set_subtitle('Working…')
++        self.library_retry.set_visible(False)
++        self.launch_button.set_sensitive(False)
++        # Freeze settings while operations use their current game/user directories.
++        self.stack.get_child_by_name('settings').set_sensitive(False)
++        def finish(value=None, error=None):
++            self.library_busy = False
++            self.library_spinner.stop()
++            self.stack.get_child_by_name('settings').set_sensitive(True)
++            self.library_status.set_title('Operation failed' if error else 'Completed')
++            self.library_status.set_subtitle(str(error or value or title))
++            self.library_retry_action = lambda: self.library_task(title, operation, completed)
++            self.library_retry.set_visible(error is not None)
++            if not error and completed:
++                completed(value)
++            self.update_game_status()
++            self.refresh_library()
++            self.library_status.set_title('Operation failed' if error else 'Completed')
++            self.library_status.set_subtitle(str(error or value or title))
++            self.library_retry_action = lambda: self.library_task(title, operation, completed)
++            self.library_retry.set_visible(error is not None)
++            return False
++        def worker():
++            try: result = operation()
++            except Exception as error: GLib.idle_add(finish, None, error)
++            else: GLib.idle_add(finish, result, None)
++        threading.Thread(target=worker, daemon=True).start()
++
++    def library_error(self, error):
++        self.library_status.set_title('Cannot continue')
++        self.library_status.set_subtitle(str(error))
++        self.library_retry_action = self.refresh_library
++        self.library_retry.set_visible(True)
++
++    def on_prepare_game(self, _button):
++        DATA_DIR = self.library_data()
++        if self.process or self.library_busy:
++            self.library_error('Stop the game and wait for the current operation first')
++            return
++        def base_chosen(base):
++            def update_chosen(update):
++                def done(folder):
++                    self.settings['game_dir'] = str(folder)
++                    self.store()
++                    self.update_game_status()
++                self.library_task('Preparing game', lambda: library.prepare_game(base, update, DATA_DIR), done)
++            self.choose_folder('Choose the matching 1.21 update', '', update_chosen)
++        self.choose_folder('Choose the original base game', '', base_chosen)
++
++    def on_backup_saves(self, _button):
++        try: _, root, backups = self.library_context()
++        except ValueError as error: return self.library_error(error)
++        self.library_task('Backing up saves', lambda: library.backup(root, backups))
++
++    def on_export_saves(self, _button):
++        try: _, root, _ = self.library_context()
++        except ValueError as error: return self.library_error(error)
++        self.choose_folder('Choose export destination', '', lambda folder: self.library_task(
++            'Exporting saves', lambda: library.copy_new(root, Path(folder) / ('CTR-saves-' + uuid.uuid4().hex[:8]))))
++
++    def confirm_save_change(self, callback):
++        dialog = Adw.AlertDialog(heading='Replace existing saves?', body='Current saves will be backed up first. The game must be stopped.')
++        dialog.add_response('cancel', 'Cancel')
++        dialog.add_response('continue', 'Continue')
++        dialog.set_response_appearance('continue', Adw.ResponseAppearance.DESTRUCTIVE)
++        dialog.set_default_response('cancel')
++        dialog.set_close_response('cancel')
++        dialog.connect('response', lambda _d, response: callback() if response == 'continue' else None)
++        dialog.present(self)
++
++    def on_restore_saves(self, _button):
++        try: _, root, backups = self.library_context()
++        except ValueError as error: return self.library_error(error)
++        def chosen(folder):
++            self.confirm_save_change(lambda: self.library_task('Restoring saves',
++                lambda: library.install_saves(folder, root, backups, replace=True, title=root.name)))
++        self.choose_folder('Choose a save backup', backups, chosen)
++
++    def on_import_saves(self, _button):
++        try: title, root, backups = self.library_context()
++        except ValueError as error: return self.library_error(error)
++        def chosen(folder):
++            self.confirm_save_change(lambda: self.library_task('Importing saves',
++                lambda: library.import_saves(folder, root, backups, title)))
++        self.choose_folder('Choose runtime saves or a decrypted PS4 save', '', chosen)
++
++    def dlc_dir(self):
++        DATA_DIR = self.library_data()
++        return Path(os.environ.get('BB_DLC_DIR', DATA_DIR / 'dlc'))
++
++    def on_dlc_enabled(self, row, _param):
++        self.settings['dlc_enabled'] = row.get_active()
++        self.persist_library_settings()
++
++    def on_add_dlc(self, _button):
++        try: title, _, _ = self.library_context()
++        except ValueError as error: return self.library_error(error)
++        dialog = Gtk.FileDialog(title='Choose a matching DLC package', modal=True)
++        f = Gtk.FileFilter(name='PS4 DLC packages')
++        f.add_pattern('*.pkg')
++        filters = Gio.ListStore.new(Gtk.FileFilter)
++        filters.append(f)
++        dialog.set_filters(filters)
++        def selected(dialog, result):
++            try: file = dialog.open_finish(result)
++            except GLib.Error: return
++            if file and file.get_path():
++                self.library_task('Adding DLC', lambda: library.add_dlc(file.get_path(), self.dlc_dir(), title))
++        dialog.open(self, None, selected)
++
++    def on_remove_dlc(self, _button, source, title):
++        dialog = Adw.AlertDialog(heading='Remove DLC package?',
++            body='This removes only the package in the managed DLC folder. A separately imported original is preserved.')
++        dialog.add_response('cancel', 'Cancel')
++        dialog.add_response('remove', 'Remove')
++        dialog.set_response_appearance('remove', Adw.ResponseAppearance.DESTRUCTIVE)
++        dialog.set_default_response('cancel')
++        dialog.set_close_response('cancel')
++        dialog.connect('response', lambda _d, response: self.library_task('Removing DLC',
++            lambda: library.remove_dlc(source, self.dlc_dir(), title)) if response == 'remove' else None)
++        dialog.present(self)
++
++    def toggle_dlc(self, row, _param, label):
++        disabled = set(self.settings.get('dlc_disabled', []))
++        if row.get_active(): disabled.discard(label)
++        else: disabled.add(label)
++        self.settings['dlc_disabled'] = sorted(disabled)
++        self.persist_library_settings()
++
++    def toggle_patch(self, row, _param, key, path):
++        try:
++            config = json.loads(path.read_text()) if path.exists() else {}
++            for field in ('enabled', 'disabled'):
++                values = set(config.get(field, []))
++                values.discard(key)
++                if (field == 'enabled') == row.get_active(): values.add(key)
++                config[field] = sorted(values)
++            path.parent.mkdir(parents=True, exist_ok=True)
++            temp = path.with_name('.patches-' + uuid.uuid4().hex)
++            temp.write_text(json.dumps(config, indent=2) + '\n')
++            temp.replace(path)
++        except (OSError, ValueError) as error: self.library_error(error)
++
++    def refresh_library(self):
++        if not hasattr(self, 'save_list') or self.library_busy:
++            return False
++        DATA_DIR = self.library_data()
++        for group, attr in ((self.save_list, 'save_list_rows'), (self.dlc_list, 'dlc_list_rows'), (self.extra_patches, 'extra_patch_rows')):
++            for row in getattr(self, attr): group.remove(row)
++            setattr(self, attr, [])
++        try:
++            title, root, _ = self.library_context()
++            slots = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.endswith(('.sce_sys','.memory'))) if root.exists() else []
++            for slot in slots:
++                meta = root / (slot.name + '.sce_sys') / 'param.bin'
++                details = ''
++                if meta.is_file():
++                    with meta.open('rb') as file: blob = file.read(256)
++                    details = ' · '.join(v.split(b'\0',1)[0].decode('utf-8', 'replace') for v in (blob[:128], blob[128:256])).strip(' ·')
++                row = Adw.ActionRow(title=slot.name, subtitle=details or str(slot))
++                self.save_list.add(row)
++                self.save_list_rows.append(row)
++            if not slots:
++                row = Adw.ActionRow(title='No saves yet', subtitle='Play the game or use Import above.')
++                self.save_list.add(row)
++                self.save_list_rows.append(row)
++            addons = library.content_profile.find_addons(self.dlc_dir(), title)
++            for label, name, source in addons:
++                row = Adw.SwitchRow(title=name, subtitle=label, active=label not in self.settings.get('dlc_disabled', []))
++                row.connect('notify::active', self.toggle_dlc, label)
++                source_path = self.dlc_dir() / source
++                if source_path.is_file() and source_path.suffix.lower() == '.pkg':
++                    remove = Gtk.Button(icon_name='user-trash-symbolic', tooltip_text='Remove managed DLC package', valign=Gtk.Align.CENTER)
++                    remove.connect('clicked', self.on_remove_dlc, source_path, title)
++                    row.add_suffix(remove)
++                self.dlc_list.add(row)
++                self.dlc_list_rows.append(row)
++            if not addons:
++                row = Adw.ActionRow(title='No matching DLC', subtitle='Use Add above to import your own package.')
++                self.dlc_list.add(row)
++                self.dlc_list_rows.append(row)
++            config_path = Path(os.environ.get('BB_PATCHES_CONFIG', DATA_DIR / 'patches.json'))
++            config = json.loads(config_path.read_text()) if config_path.exists() else {}
++            directory = Path(os.environ.get('BB_PATCHES_DIR', DATA_DIR / 'patches'))
++            catalogs = patches.available_patches(directory, '01.21', title)
++            seen = set(patches.GAME_PATCH_KEYS.values())
++            for key, file, meta in catalogs:
++                if key in seen: continue
++                seen.add(key)
++                active = key in config.get('enabled', []) or (key not in config.get('disabled', []) and meta.get('isEnabled', 'false').lower() == 'true')
++                row = Adw.SwitchRow(title=meta.get('Name', key), subtitle=file.name, active=active)
++                row.connect('notify::active', self.toggle_patch, key, config_path)
++                self.extra_patches.add(row)
++                self.extra_patch_rows.append(row)
++            if not self.extra_patch_rows:
++                row = Adw.ActionRow(title='No additional patches', subtitle=str(directory))
++                self.extra_patches.add(row)
++                self.extra_patch_rows.append(row)
++        except (OSError, ValueError) as error:
++            self.library_error(error)
++        return False
+diff --git a/launcher/native_update.py b/launcher/native_update.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..56a55e5eb8fac867ebddc1460fa76972b3987f06
+--- /dev/null
++++ b/launcher/native_update.py
+@@ -0,0 +1,61 @@
++"""Explicit update checks for the native package; no background polling or telemetry."""
++import json
++from pathlib import Path
++import re
++import subprocess
++import urllib.request
++
++REPOSITORY = 'zamkara/CTR-NitroFueled'
++API = f'https://api.github.com/repos/{REPOSITORY}/releases/latest'
++
++
++def installed_info(root):
++    info = json.loads((Path(root) / 'build-info.json').read_text())
++    if not re.fullmatch(r'[a-f0-9]{40}', info.get('commit', '')) or not info.get('package_version'):
++        raise ValueError('Installed build metadata is invalid')
++    return info
++
++
++def release_info(data):
++    tag = data.get('tag_name', '')
++    if data.get('draft') or data.get('prerelease') or not re.fullmatch(r'arch-[a-f0-9]{40}', tag):
++        raise ValueError('No stable native release is available')
++    assets = data.get('assets', [])
++    packages = [a for a in assets if re.fullmatch(r'ctr-nitrofueled-[A-Za-z0-9.+_~\-]+-x86_64\.pkg\.tar\.zst', a.get('name', ''))]
++    if len(packages) != 1:
++        raise ValueError('Release does not contain exactly one native package')
++    required = [packages[0]]
++    for name in ('install.sh', 'SHA256SUMS'):
++        matches = [a for a in assets if a.get('name') == name]
++        if len(matches) != 1:
++            raise ValueError('Release is incomplete')
++        required.extend(matches)
++    for asset in required:
++        expected = f"https://github.com/{REPOSITORY}/releases/download/{tag}/{asset['name']}"
++        if asset.get('browser_download_url') != expected:
++            raise ValueError('Unexpected release asset location')
++    name = packages[0]['name']
++    version = name[len('ctr-nitrofueled-'):-len('-x86_64.pkg.tar.zst')]
++    return {'version': version, 'commit': tag[5:], 'url': f'https://github.com/{REPOSITORY}/releases/tag/{tag}'}
++
++
++def check(root):
++    installed = installed_info(root)
++    request = urllib.request.Request(API, headers={'Accept': 'application/vnd.github+json',
++                                                 'User-Agent': 'CTR-NitroFueled-native-update'})
++    with urllib.request.urlopen(request, timeout=8) as response:
++        raw = response.read(2_000_001)
++    if len(raw) > 2_000_000:
++        raise ValueError('Release response is too large')
++    available = release_info(json.loads(raw))
++    comparison = subprocess.run(['vercmp', installed['package_version'], available['version']],
++                                capture_output=True, text=True, check=True, timeout=3)
++    return {**available, 'installed': installed['package_version'],
++            'update_available': int(comparison.stdout.strip()) < 0}
++
++
++def installer_command(root):
++    installer = Path(root) / 'install.sh'
++    if not installer.is_file():
++        raise FileNotFoundError('Native installer is unavailable in this build')
++    return ['xdg-terminal-exec', '--', '/usr/bin/bash', str(installer)]
+diff --git a/launcher/sacredfire_launcher.py b/launcher/sacredfire_launcher.py
+index d7b5166bb5f28952e8ecd460317ff08e7f2f44ce..f7839126a991ddc38dafbaecedbdd17faeae6a9f 100644
+--- a/launcher/sacredfire_launcher.py
++++ b/launcher/sacredfire_launcher.py
+@@ -18,6 +18,7 @@ import signal
+ import subprocess
+ import sys
+ import time
++import threading
+ from pathlib import Path
+ 
+ from bbport_i18n import language, set_language, tr
+@@ -26,12 +27,16 @@ import gi
+ 
+ gi.require_version("Gtk", "4.0")
+ gi.require_version("Adw", "1")
+-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
++from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+ 
+ PORT_DIR = Path(__file__).resolve().parent.parent
+ sys.path.insert(0, str(PORT_DIR / "scripts"))
+ import game_check  # noqa: E402
+ import steam_shortcuts  # noqa: E402
++import control_bindings
++import native_update
++import library
++from library_ui import LibraryMixin
+ 
+ PACKAGED = bool(os.environ.get("BB_PREBUILT"))
+ 
+@@ -65,7 +70,7 @@ PRESENT_MODES = [("Mailbox", "Mailbox"), ("FIFO (VSync)", "Fifo"),
+ # TroyWarez from https://github.com/illusionyy/PS-Game-Patch): bbport.ini key,
+ # label, note. The in-game menu edits the same keys.
+ PATCHES = [
+-    ("patch_60fps", "60 FPS unlock", "By illusion. 60 in menus, 40-45 in races on a Steam Deck"),
++    ("patch_60fps", "60 FPS unlock", "Requires restart"),
+     ("patch_no_motion_blur", "Disable motion blur", "By illusion"),
+     ("patch_pro_1080p", "1080p in PS4 Pro mode", "By TroyWarez; only with PS4 Pro mode below"),
+ ]
+@@ -84,10 +89,16 @@ DEFAULTS = {
+     "frame_stats": False,
+     "save_log": False,
+     "mangohud": False,
++    "stats_interval": "1000",
++    "display": "",
++    "dlc_enabled": True,
++    "dlc_disabled": [],
+     "vk_validation": False,
+     "extra_env": "",
+ }
+-INI_DEFAULTS = {"show_fps": "0", **{key: "0" for key, _, _ in PATCHES}}
++INI_DEFAULTS = {"show_fps": "0", "fps_limit": "60", "render_res": "1080",
++                "temporal": "fsr1", "async_pipelines": "0", "fsr3_sharpness": "0.3",
++                "sharpness": "0.7", **{key: "0" for key, _, _ in PATCHES}}
+ 
+ 
+ def load_settings():
+@@ -149,8 +160,13 @@ def game_environment(s):
+     if s["user_dir"]:
+         env["BB_USER_DIR"] = s["user_dir"]
+     env["BB_LANGUAGE"] = s["language"]
++    if s.get("display"):
++        env["BB_DISPLAY"] = s["display"]
++    env["BB_DLC"] = "1" if s.get("dlc_enabled", True) else "0"
++    env["BB_DLC_DISABLED"] = ",".join(s.get("dlc_disabled", []))
+     env["BB_MENU_LANGUAGE"] = language()
+-    env["BB_FULLSCREEN"] = "1" if s["fullscreen"] else "0"
++    values, _ = load_ini()
++    env["BB_FULLSCREEN"] = values.get("fullscreen", "1" if s["fullscreen"] else "0")
+     env["BB_PRESENT_MODE"] = s["present_mode"]
+     if s.get("gamepad"):
+         env["BB_GAMEPAD"] = s["gamepad"]
+@@ -163,6 +179,12 @@ def game_environment(s):
+         env["BB_SAVE_LOG"] = "1"
+     if s["mangohud"]:
+         env["MANGOHUD"] = "1"
++        interval = s.get("stats_interval", "1000")
++        if interval not in ("1000", "2000"):
++            interval = "1000"
++        env.setdefault("MANGOHUD_CONFIG",
++                       "fps,frametime,frame_timing,cpu_stats,gpu_stats,vram,ram,resolution,"
++                       f"fps_sampling_period={interval}")
+     if s["vk_validation"]:
+         env["BB_VK_VALIDATION"] = "1"
+     for item in s["extra_env"].split():
+@@ -174,7 +196,7 @@ def game_environment(s):
+ 
+ def connected_gamepads():
+     """(GUID, name) of the connected gamepads (bb-gpu-capabilities --gamepads), [] if unknown."""
+-    tool = PORT_DIR / ("bin" if PACKAGED else "out") / "bb-gpu-capabilities"
++    tool = Path(os.environ["BB_PROBE"]).parent / "bb-gpu-capabilities" if os.environ.get("BB_PROBE") else PORT_DIR / ("bin" if PACKAGED else "out") / "bb-gpu-capabilities"
+     try:
+         run = subprocess.run([str(tool), "--gamepads"], capture_output=True, text=True, timeout=5)
+     except (OSError, subprocess.SubprocessError):
+@@ -182,6 +204,16 @@ def connected_gamepads():
+     return [tuple(line.split("\t", 1)) for line in run.stdout.splitlines() if "\t" in line]
+ 
+ 
++def connected_displays():
++    tool = Path(os.environ["BB_PROBE"]).parent / "bb-gpu-capabilities" if os.environ.get("BB_PROBE") else PORT_DIR / ("bin" if PACKAGED else "out") / "bb-gpu-capabilities"
++    try:
++        run = subprocess.run([str(tool), "--displays"], capture_output=True, text=True, timeout=5)
++    except (OSError, subprocess.SubprocessError):
++        return []
++    return [(parts[0], parts[1]) for line in run.stdout.splitlines()
++            if len(parts := line.split("\t")) >= 2]
++
++
+ def flat_button(icon, tooltip, handler):
+     button = Gtk.Button(icon_name=icon, valign=Gtk.Align.CENTER, tooltip_text=tooltip)
+     button.add_css_class("flat")
+@@ -235,7 +267,7 @@ def install_game_icon(game_dir):
+         return False
+ 
+ 
+-class LauncherWindow(Adw.ApplicationWindow):
++class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
+     def __init__(self, app):
+         super().__init__(application=app, title=f"{TITLE} {port_version()}".rstrip())
+         if install_game_icon(self.settings["game_dir"] if hasattr(self, "settings") else load_settings()["game_dir"]):
+@@ -244,7 +276,12 @@ class LauncherWindow(Adw.ApplicationWindow):
+         self.settings = load_settings()
+         set_language(self.settings.get("ui_language", ""))
+         self.ini, self.ini_lines = load_ini()
++        if "fullscreen" in self.ini:
++            self.settings["fullscreen"] = self.ini["fullscreen"] == "1"
+         self.process = None
++        self.library_busy = False
++        self.closing = False
++        self.syncing_settings = False
+         self.stream = None
+         self.build()
+         self.connect("close-request", self.on_close)
+@@ -265,6 +302,9 @@ class LauncherWindow(Adw.ApplicationWindow):
+         self.set_content(toolbar)
+         self.stack.add_titled_with_icon(self.build_settings_page(), "settings", tr("Settings"),
+                                         "preferences-system-symbolic")
++        self.stack.add_titled_with_icon(self.build_controls_page(), "controls", tr("Controls"),
++                                        "input-gaming-symbolic")
++        self.stack.add_titled_with_icon(self.build_library_page(), "library", "Library", "folder-symbolic")
+         self.stack.add_titled_with_icon(self.build_log_page(), "log", tr("Log"),
+                                         "utilities-terminal-symbolic")
+         self.update_launch_button()
+@@ -282,8 +322,8 @@ class LauncherWindow(Adw.ApplicationWindow):
+         page = Adw.PreferencesPage()
+ 
+         game = Adw.PreferencesGroup(title=tr("Game"),
+-                                    description=tr("The dumped game with its 1.21 update merged over the base (eboot.bin, sce_module, ...)"))
+-        self.game_row = Adw.ActionRow(title=tr("Game folder (CUSA13795)"))
++                                    description="Select a prepared 1.21 game folder, or use Library → Prepare Game.")
++        self.game_row = Adw.ActionRow(title=tr("Game folder"))
+         self.game_status = Gtk.Image(valign=Gtk.Align.CENTER)
+         self.game_row.add_suffix(self.game_status)
+         self.game_row.add_suffix(flat_button("folder-open-symbolic", tr("Choose the folder with eboot.bin"), self.on_choose_game))
+@@ -299,75 +339,146 @@ class LauncherWindow(Adw.ApplicationWindow):
+         page.add(game)
+ 
+         controls = Adw.PreferencesGroup(title=tr("Controller"),
+-                                        description=tr("Any connected gamepad plus the keyboard; the one used last takes over. "
+-                                                       "Split-screen ports are assigned in the in-game menu (Insert / L3+R3)."))
++                                        description="Player assignments and mappings are in Controls.")
+         pads = connected_gamepads()
+         choices = [(tr("First connected"), "")] + [(name, guid) for guid, name in pads]
+         if self.settings["gamepad"] and self.settings["gamepad"] not in [g for g, _ in pads]:
+             choices.append((tr("{} (not connected)").format(self.settings["gamepad_name"] or self.settings["gamepad"]), self.settings["gamepad"]))
+         self.gamepad_row = combo_row(tr("Controller"), None, choices, self.settings["gamepad"])
+         controls.add(self.gamepad_row)
+-        page.add(controls)
++        # Controller selection is unified with per-player assignment in Controls.
+ 
+         patches = Adw.PreferencesGroup(title=tr("Game patches"),
+-                                       description=tr("From patches/CrashTeamRacing.xml (illusionyy/PS-Game-Patch), applied at start; "
+-                                                      "also in the in-game menu"))
++                                       description="Apply on the next launch.")
+         self.patch_rows = {}
+         for key, label, note in PATCHES:
+             row = Adw.SwitchRow(title=tr(label), subtitle=tr(note), active=self.ini.get(key) == "1")
+-            patches.add(row)
++            if key != "patch_pro_1080p":
++                patches.add(row)
+             self.patch_rows[key] = row
+         page.add(patches)
+ 
+         console = Adw.PreferencesGroup(title=tr("Console"))
+         self.neo_row = Adw.SwitchRow(title=tr("PS4 Pro mode"),
+-                                     subtitle=tr("Neo mode, 7 CPUs, 5568 MiB direct memory: the game's Pro rendering path"),
++                                     subtitle="",
+                                      active=self.settings["neo"])
+         console.add(self.neo_row)
+-        page.add(console)
++        # The selected resolution now chooses the console rendering path automatically.
+ 
+         screen = Adw.PreferencesGroup(title=tr("Display"))
+         self.fullscreen_row = Adw.SwitchRow(title=tr("Fullscreen"), active=self.settings["fullscreen"])
+         screen.add(self.fullscreen_row)
++        displays = connected_displays()
++        display_choices = [("Primary monitor", "")] + [(name + " · " + size, name) for name, size in displays]
++        if self.settings["display"] and self.settings["display"] not in [v for _, v in display_choices]:
++            display_choices.append((self.settings["display"] + " (not connected)", self.settings["display"]))
++        self.display_row = combo_row("Monitor", None, display_choices, self.settings["display"])
++        screen.add(self.display_row)
++        self.render_row = combo_row("Internal resolution", "Applied on the next launch or in-game restart",
++            [(f"{n}p", str(n)) for n in (480, 720, 1080, 1440, 1620, 2160)], self.ini["render_res"])
++        screen.add(self.render_row)
++        self.upscale_row = combo_row("Upscaling", "DLSS is unavailable in the Linux runtime; FSR 3 is experimental",
++            [("Off", "off"), ("AMD FSR 1", "fsr1"), ("AMD FSR 3", "fsr3")], self.ini["temporal"])
++        screen.add(self.upscale_row)
++        self.fsr_row = combo_row("FSR 1 sharpness", None,
++            [(str(n / 10), str(n / 10)) for n in range(0, 21)], self.ini["sharpness"])
++        screen.add(self.fsr_row)
++        self.fsr3_row = combo_row("FSR 3 sharpness", None,
++            [(str(n / 10), str(n / 10)) for n in range(0, 11)], self.ini["fsr3_sharpness"])
++        screen.add(self.fsr3_row)
++        self.limit_row = combo_row("Frame rate limit", "Higher rates require the 60 FPS unlock patch",
++            [("Uncapped", "0")] + [(str(n), str(n)) for n in (30, 60, 72, 90, 120, 144, 240)], self.ini["fps_limit"])
++        screen.add(self.limit_row)
++        self.limit_row.connect("notify::selected", self.on_fps_limit_selected)
++        self.patch_rows["patch_60fps"].connect("notify::active", self.on_fps_patch_changed)
++        if self.ini.get("patch_60fps") != "1":
++            self.limit_row.set_selected(self.limit_row.values.index("30"))
++        self.async_row = Adw.SwitchRow(title="Compile shaders in the background",
++            subtitle="Experimental: new effects may appear late", active=self.ini["async_pipelines"] == "1")
++        screen.add(self.async_row)
+         self.present_row = combo_row(tr("Presentation"), None, PRESENT_MODES, self.settings["present_mode"])
+         screen.add(self.present_row)
+         self.fps_row = Adw.SwitchRow(title=tr("FPS counter in the corner"), active=self.ini.get("show_fps") == "1")
+         screen.add(self.fps_row)
+         page.add(screen)
+ 
+-        dev = Adw.PreferencesGroup(title=tr("Developer"))
+-        self.mangohud_row = Adw.SwitchRow(title="MangoHud", active=self.settings["mangohud"])
+-        dev.add(self.mangohud_row)
++        statistics = Adw.PreferencesGroup(title="Performance statistics")
++        self.mangohud_row = Adw.SwitchRow(title="Performance overlay",
++            subtitle="FPS, frame time, CPU, GPU, video memory, RAM and resolution via MangoHud",
++            active=self.settings["mangohud"])
++        statistics.add(self.mangohud_row)
++        self.stats_interval_row = combo_row("FPS sampling interval", None,
++            [("1 second", "1000"), ("2 seconds", "2000")], self.settings["stats_interval"])
++        statistics.add(self.stats_interval_row)
++        page.add(statistics)
++
++        dev = Adw.ExpanderRow(title="Diagnostics and advanced options")
+         self.stats_row = Adw.SwitchRow(title=tr("Frame statistics in the log"), active=self.settings["frame_stats"])
+-        dev.add(self.stats_row)
++        dev.add_row(self.stats_row)
+         self.save_log_row = Adw.SwitchRow(title=tr("Save the log to a file (logs/)"), active=self.settings["save_log"])
+-        dev.add(self.save_log_row)
++        dev.add_row(self.save_log_row)
+         self.cache_row = Adw.SwitchRow(title=tr("Clear the shader cache at start"),
+-                                       subtitle=tr("The cache is kept by default so known areas do not compile shaders mid-race; clear it after GPU driver updates or rendering glitches"),
++                                       subtitle="Use after a driver update or visual glitches",
+                                        active=self.settings["clear_shader_cache"])
+-        dev.add(self.cache_row)
++        dev.add_row(self.cache_row)
+         self.validation_row = Adw.SwitchRow(title=tr("Vulkan validation layer (slow)"), active=self.settings["vk_validation"])
+-        dev.add(self.validation_row)
++        dev.add_row(self.validation_row)
+         self.env_row = Adw.EntryRow(title=tr("Extra environment (VAR=value ...)"), text=self.settings["extra_env"])
+-        dev.add(self.env_row)
++        dev.add_row(self.env_row)
+         self.ui_language_row = combo_row(tr("Launcher language"), tr("Applies after restarting the launcher"),
+                                          UI_LANGUAGES, self.settings["ui_language"])
+-        dev.add(self.ui_language_row)
+-        page.add(dev)
++        dev.add_row(self.ui_language_row)
++        advanced = Adw.PreferencesGroup()
++        advanced.add(dev)
++        page.add(advanced)
+ 
+         steam = Adw.PreferencesGroup(title=tr("Steam"))
+         exe, _start, _options = steam_shortcuts.launcher_command()
+         steam_row = Adw.ActionRow(title=tr("Add to Steam"),
+-                                  subtitle=tr("A non-Steam shortcut that starts the game with these settings (Steam Deck game mode). Close Steam before adding."))
++                                  subtitle="Close Steam before adding.")
+         steam_row.set_tooltip_text(exe)
+         add_button = Gtk.Button(label=tr("Add"), valign=Gtk.Align.CENTER)
+         add_button.connect("clicked", self.on_add_to_steam)
+         steam_row.add_suffix(add_button)
+         steam.add(steam_row)
+         page.add(steam)
++        updates = Adw.PreferencesGroup(title=tr("Application updates"))
++        try:
++            version = native_update.installed_info(PORT_DIR)["package_version"]
++        except (OSError, ValueError):
++            version = tr("Development checkout")
++        self.update_row = Adw.ActionRow(title=tr("Native Arch package"), subtitle=version)
++        self.update_button = Gtk.Button(label=tr("Check for Updates"), valign=Gtk.Align.CENTER)
++        self.update_button.connect("clicked", self.on_check_updates)
++        self.update_row.add_suffix(self.update_button)
++        self.install_update_button = Gtk.Button(label=tr("Install Update"), valign=Gtk.Align.CENTER, visible=False)
++        self.install_update_button.connect("clicked", self.on_install_update)
++        self.update_row.add_suffix(self.install_update_button)
++        updates.add(self.update_row)
++        page.add(updates)
+         self.update_user_status()
+         return page
+ 
++    def on_fps_limit_selected(self, row, _param):
++        if self.syncing_settings:
++            return
++        if combo_value(row) != "30":
++            self.patch_rows["patch_60fps"].set_active(True)
++
++    def on_fps_patch_changed(self, row, _param):
++        if self.syncing_settings:
++            return
++        if row.get_active() and hasattr(self, "limit_row") and combo_value(self.limit_row) == "30":
++            self.limit_row.set_selected(self.limit_row.values.index("60"))
++        if not row.get_active() and hasattr(self, "limit_row"):
++            self.limit_row.set_selected(self.limit_row.values.index("30"))
++
++    def library_data(self):
++        return DATA_DIR
++
++    def persist_library_settings(self):
++        save_settings(self.settings)
++
+     def game_dir(self):
+         return Path(self.settings["game_dir"]).expanduser()
+ 
+@@ -387,16 +498,18 @@ class LauncherWindow(Adw.ApplicationWindow):
+             tooltip = tr("No eboot.bin in the folder")
+         elif problem:
+             tooltip = game_check.explain(*problem)
+-            self.game_row.set_subtitle(f"{path}\n{tooltip}")
++            self.game_row.set_subtitle("Update 1.21 required — use Library → Prepare Game" if problem[0] in ("missing_update", "wrong_eboot") else "Game files need attention — see the warning tooltip")
+         elif profile and profile["name"] != "ctr":
+             tooltip = tr("This is {}; this launcher runs Crash Team Racing: Nitro-Fueled").format(profile["game"])
+             problem = ("other_title", profile["title"], profile["version"])
+-            self.game_row.set_subtitle(f"{path}\n{tooltip}")
++            self.game_row.set_subtitle("Update 1.21 required — use Library → Prepare Game" if problem[0] in ("missing_update", "wrong_eboot") else "Game files need attention — see the warning tooltip")
+         else:
+-            tooltip = f"{GAME} CUSA13795, 1.21"
++            tooltip = f"{GAME} {profile['title']}, {profile['version']}"
+         self.game_status.set_from_icon_name("object-select-symbolic" if ok and not problem else "dialog-warning-symbolic")
+         self.game_status.set_tooltip_text(tooltip)
+         self.launch_button.set_sensitive((ok and not problem) or self.process is not None)
++        if hasattr(self, "save_list"):
++            self.refresh_library()
+ 
+     def choose_folder(self, title, initial, chosen):
+         dialog = Gtk.FileDialog(title=title, modal=True)
+@@ -434,12 +547,14 @@ class LauncherWindow(Adw.ApplicationWindow):
+     def store(self):
+         s = self.settings
+         s["language"] = combo_value(self.language_row)
+-        s["gamepad"] = combo_value(self.gamepad_row)
+-        s["gamepad_name"] = self.gamepad_row.get_selected_item().get_string() if s["gamepad"] else ""
++        s["gamepad"] = combo_value(self.port_rows[1])
++        s["gamepad_name"] = self.port_rows[1].get_selected_item().get_string() if s["gamepad"] else ""
+         s["neo"] = self.neo_row.get_active()
+         s["fullscreen"] = self.fullscreen_row.get_active()
+         s["present_mode"] = combo_value(self.present_row)
++        s["display"] = combo_value(self.display_row)
+         s["mangohud"] = self.mangohud_row.get_active()
++        s["stats_interval"] = combo_value(self.stats_interval_row)
+         s["frame_stats"] = self.stats_row.get_active()
+         s["save_log"] = self.save_log_row.get_active()
+         s["clear_shader_cache"] = self.cache_row.get_active()
+@@ -447,6 +562,14 @@ class LauncherWindow(Adw.ApplicationWindow):
+         s["extra_env"] = self.env_row.get_text()
+         s["ui_language"] = combo_value(self.ui_language_row)
+         save_settings(s)
++        self.ini, self.ini_lines = load_ini()
++        for key, row in (("render_res", self.render_row), ("temporal", self.upscale_row),
++                         ("fps_limit", self.limit_row), ("sharpness", self.fsr_row), ("fsr3_sharpness", self.fsr3_row)):
++            self.ini[key] = combo_value(row)
++        self.ini["async_pipelines"] = "1" if self.async_row.get_active() else "0"
++        self.ini["fullscreen"] = "1" if self.fullscreen_row.get_active() else "0"
++        for port, row in getattr(self, "port_rows", {}).items():
++            self.ini[f"port.{port}"] = combo_value(row)
+         for key, row in self.patch_rows.items():
+             self.ini[key] = "1" if row.get_active() else "0"
+         self.ini["show_fps"] = "1" if self.fps_row.get_active() else "0"
+@@ -538,6 +661,182 @@ class LauncherWindow(Adw.ApplicationWindow):
+                 self.toasts.add_toast(Adw.Toast(title=tr("Could not save the log: {}").format(error)))
+         dialog.save(self, None, finish)
+ 
++    # --- Native package updates ----------------------------------------------------------
++
++    def on_check_updates(self, _button):
++        self.update_button.set_sensitive(False)
++        self.install_update_button.set_visible(False)
++        self.update_row.set_subtitle(tr("Checking the latest published package…"))
++
++        def worker():
++            try:
++                result = native_update.check(PORT_DIR)
++                error = None
++            except Exception as exc:
++                result, error = None, str(exc)
++            GLib.idle_add(self.finish_update_check, result, error)
++
++        threading.Thread(target=worker, daemon=True).start()
++
++    def finish_update_check(self, result, error):
++        self.update_button.set_sensitive(True)
++        if error:
++            self.update_row.set_subtitle(tr("Check failed: {}. Try again.").format(error))
++        elif result["update_available"]:
++            self.update_row.set_subtitle(tr("Installed: {} · Available: {}").format(
++                result["installed"], result["version"]))
++            self.install_update_button.set_visible(True)
++        else:
++            self.update_row.set_subtitle(tr("Up to date · {}").format(result["installed"]))
++        return False
++
++    def on_install_update(self, _button):
++        if self.process is not None:
++            self.toasts.add_toast(Adw.Toast(title=tr("Stop the game before updating")))
++            return
++        try:
++            self.store()
++            subprocess.Popen(native_update.installer_command(PORT_DIR))
++        except (OSError, ValueError) as error:
++            self.toasts.add_toast(Adw.Toast(title=tr("Could not start the installer: {}").format(error)))
++            return
++        self.toasts.add_toast(Adw.Toast(title=tr("Complete the update in the terminal, then restart the launcher"), timeout=8))
++
++    # --- Input mapping -------------------------------------------------------------------
++
++    def build_controls_page(self):
++        page = Adw.PreferencesPage()
++        ports = Adw.PreferencesGroup(title="Split-screen controllers",
++            description="Ports 2–4 activate extra players when assigned controllers connect. Settings apply on the next launch.")
++        self.port_rows = {}
++        pads = connected_gamepads()
++        for port in range(1, 5):
++            current = self.ini.get(f"port.{port}", self.settings["gamepad"] if port == 1 else "")
++            choices = [("Automatic" if port == 1 else "Not assigned", "")] + [(name, guid) for guid, name in pads]
++            if current and current not in [v for _, v in choices]: choices.append((current + " (not connected)", current))
++            row = combo_row(f"Player {port}", None, choices, current)
++            ports.add(row)
++            self.port_rows[port] = row
++        page.add(ports)
++        self.binding_rows = {}
++        for prefix, title, note in (
++            ("key", "Keyboard", "Physical key positions. Select up to four keys per action."),
++            ("pad", "Controller", "Remap buttons and triggers. Analog sticks keep their native axes."),
++        ):
++            group = Adw.PreferencesGroup(title=tr(title), description=tr(note) + " " + tr("Changes apply on the next game launch."))
++            for action in control_bindings.defaults(prefix):
++                label = control_bindings.LABELS.get(action, action.replace("_", " ").title())
++                row = Adw.ActionRow(title=tr(label))
++                button = Gtk.Button(label=tr("Change"), valign=Gtk.Align.CENTER)
++                button.connect("clicked", self.on_edit_binding, prefix, action)
++                row.add_suffix(button)
++                self.binding_rows[prefix, action] = row
++                group.add(row)
++            row = Adw.ActionRow(title=tr("Restore default mappings"))
++            button = Gtk.Button(label=tr("Reset"), valign=Gtk.Align.CENTER)
++            button.connect("clicked", self.on_reset_bindings, prefix)
++            row.add_suffix(button)
++            group.add(row)
++            page.add(group)
++        self.refresh_binding_rows()
++        return page
++
++    def refresh_binding_rows(self):
++        for (prefix, action), row in self.binding_rows.items():
++            value = control_bindings.binding(self.ini, prefix, action)
++            row.set_subtitle(", ".join(control_bindings.display_name(prefix, name.strip()) for name in value.split(",")) if value else tr("Unbound"))
++
++    def on_edit_binding(self, _button, prefix, action):
++        label = control_bindings.LABELS.get(action, action.replace("_", " ").title())
++        dialog = Adw.AlertDialog(heading=tr(label), body=tr("Choose up to four bindings. An empty selection leaves the action unbound."))
++        group = Adw.PreferencesGroup()
++        options = [""] + list(control_bindings.choices(prefix))
++        names = [tr("Unbound")] + [control_bindings.display_name(prefix, name) for name in options[1:]]
++        current = control_bindings.binding(self.ini, prefix, action).split(",")
++        dropdowns = []
++        recording = {"index": None}
++        record_buttons = []
++        for index in range(4):
++            row = Adw.ActionRow(title=tr("Binding {}").format(index + 1))
++            drop = Gtk.DropDown(model=Gtk.StringList.new(names), enable_search=True, valign=Gtk.Align.CENTER)
++            value = current[index].strip() if index < len(current) else ""
++            drop.set_selected(options.index(value) if value in options else 0)
++            row.add_suffix(drop)
++            if prefix == "key":
++                record = Gtk.Button(label="Record", valign=Gtk.Align.CENTER)
++                def listen(button, slot=index):
++                    for other in record_buttons: other.set_label("Record")
++                    recording["index"] = slot
++                    button.set_label("Press a key…")
++                record.connect("clicked", listen)
++                record_buttons.append(record)
++                row.add_suffix(record)
++            group.add(row)
++            dropdowns.append(drop)
++        if prefix == "key":
++            controller = Gtk.EventControllerKey.new()
++            controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
++            def captured(_controller, keyval, keycode, _state):
++                index = recording["index"]
++                if index is None: return False
++                if keyval != Gdk.KEY_Escape:
++                    try: name = control_bindings.physical_key_name(keycode)
++                    except OSError as error:
++                        self.toasts.add_toast(Adw.Toast(title=str(error)))
++                        name = None
++                    if name in options: dropdowns[index].set_selected(options.index(name))
++                recording["index"] = None
++                for button in record_buttons: button.set_label("Record")
++                return True
++            controller.connect("key-pressed", captured)
++            group.add_controller(controller)
++            # Retain a handle for keyboard-event regression tests.
++            dialog.record_controller = controller
++        dialog.set_extra_child(group)
++        dialog.add_response("cancel", tr("Cancel"))
++        dialog.add_response("save", tr("Save"))
++        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
++        dialog.set_default_response("save")
++        dialog.set_close_response("cancel")
++
++        def respond(_dialog, response):
++            if response != "save":
++                return
++            try:
++                value = control_bindings.normalized(prefix, [options[drop.get_selected()] for drop in dropdowns])
++                values, lines = load_ini()
++                values[f"{prefix}.{action}"] = value
++                save_ini(values, lines)
++                self.ini, self.ini_lines = load_ini()
++            except (OSError, ValueError) as error:
++                self.toasts.add_toast(Adw.Toast(title=str(error)))
++            self.refresh_binding_rows()
++
++        dialog.connect("response", respond)
++        dialog.present(self)
++
++    def on_reset_bindings(self, _button, prefix):
++        dialog = Adw.AlertDialog(heading=tr("Restore default mappings?"),
++                                body=tr("Only this input section will be reset. Other settings are preserved."))
++        dialog.add_response("cancel", tr("Cancel"))
++        dialog.add_response("reset", tr("Reset"))
++        dialog.set_response_appearance("reset", Adw.ResponseAppearance.DESTRUCTIVE)
++        dialog.set_close_response("cancel")
++
++        def respond(_dialog, response):
++            if response == "reset":
++                values, lines = load_ini()
++                values, lines = control_bindings.reset(values, lines, prefix)
++                try:
++                    save_ini(values, lines)
++                    self.ini, self.ini_lines = load_ini()
++                except OSError as error:
++                    self.toasts.add_toast(Adw.Toast(title=str(error)))
++                self.refresh_binding_rows()
++
++        dialog.connect("response", respond)
++        dialog.present(self)
++
+     # --- Steam ---------------------------------------------------------------------------
+ 
+     def on_add_to_steam(self, _button):
+@@ -578,6 +877,8 @@ class LauncherWindow(Adw.ApplicationWindow):
+         GLib.idle_add(lambda: adj.set_value(adj.get_upper()) and False)
+ 
+     def on_launch(self, _button):
++        if self.library_busy:
++            return
+         if self.process:
+             self.stop_game()
+             return
+@@ -597,6 +898,8 @@ class LauncherWindow(Adw.ApplicationWindow):
+         self.read_line()
+         self.process.wait_async(None, self.on_exit)
+         self.update_launch_button()
++        self.stack.get_child_by_name("settings").set_sensitive(False)
++        self.stack.get_child_by_name("controls").set_sensitive(False)
+         self.stack.set_visible_child_name("log")
+ 
+     def read_line(self):
+@@ -638,14 +941,45 @@ class LauncherWindow(Adw.ApplicationWindow):
+             pass
+         status = process.get_exit_status() if process.get_if_exited() else -1
+         self.process = None
++        self.stack.get_child_by_name("settings").set_sensitive(True)
++        self.stack.get_child_by_name("controls").set_sensitive(True)
+         self.update_launch_button()
++        self.ini, self.ini_lines = load_ini()
++        self.syncing_settings = True
++        for key, row in (("render_res", self.render_row), ("temporal", self.upscale_row),
++                         ("fps_limit", self.limit_row), ("sharpness", self.fsr_row), ("fsr3_sharpness", self.fsr3_row)):
++            value = self.ini.get(key)
++            if value in row.values: row.set_selected(row.values.index(value))
++        self.async_row.set_active(self.ini.get("async_pipelines") == "1")
++        if "fullscreen" in self.ini:
++            self.fullscreen_row.set_active(self.ini["fullscreen"] == "1")
++            self.settings["fullscreen"] = self.fullscreen_row.get_active()
++            save_settings(self.settings)
++        self.fps_row.set_active(self.ini.get("show_fps") == "1")
++        for key, row in self.patch_rows.items(): row.set_active(self.ini.get(key) == "1")
++        for port, row in self.port_rows.items():
++            value = self.ini.get(f"port.{port}", "")
++            if value not in row.values:
++                row.values.append(value)
++                row.get_model().append(value + " (not connected)")
++            row.set_selected(row.values.index(value))
++        self.syncing_settings = False
++        self.refresh_binding_rows()
+         self.update_game_status()
++        self.refresh_library()
+         self.append_log(tr("\n— the game exited (code {}) —\n").format(status))
++        if self.closing:
++            GLib.idle_add(self.close)
+ 
+     def on_close(self, _window):
+-        self.store()
++        if self.library_busy:
++            self.library_error("Wait for the current file operation before closing")
++            return True
+         if self.process:
++            self.closing = True
+             self.stop_game()
++            return True
++        self.store()
+         return False
+ 
+ 
+@@ -663,8 +997,8 @@ def play():
+     """--play: the game with the saved settings, no window (Steam Deck game mode)."""
+     settings = load_settings()
+     if not (Path(settings["game_dir"]).expanduser() / "eboot.bin").is_file():
+-        print("SacredFire: choose the game folder in the launcher first", file=sys.stderr)
+-        return 1
++        print("No prepared game selected; opening the launcher for setup.", file=sys.stderr)
++        return LauncherApp().run([])
+     os.chdir(PORT_DIR)
+     os.execvpe("bash", ["bash", str(PORT_DIR / "run.sh")], game_environment(settings))
+ 
+diff --git a/launcher/steam_shortcuts.py b/launcher/steam_shortcuts.py
+index fc8c23b1121b5a1e3a61cad42506c35ba284f1ff..e3887f9c5287d119ffba6cd037258520b60ceb4c 100644
+--- a/launcher/steam_shortcuts.py
++++ b/launcher/steam_shortcuts.py
+@@ -158,6 +158,9 @@ def add_shortcut(path, entry):
+ def launcher_command():
+     """What Steam should start: the AppImage when running from one, else launcher/bb-launcher.sh;
+     `--play` starts the game without the launcher window (game mode)."""
++    native = os.environ.get("CTR_NATIVE_LAUNCHER")
++    if native:
++        return native, str(Path(native).parent), "--play"
+     appimage = os.environ.get("APPIMAGE")
+     if appimage and Path(appimage).is_file():
+         exe = str(Path(appimage).resolve())
+diff --git a/patches/CrashTeamRacing.xml b/patches/CrashTeamRacing.xml
+index a9bde14796bb93f338cb2d32e3a6166ad20d9cd4..2bcd4f66bb3eab3be5dcf21acac259ffdd022cdc 100644
+--- a/patches/CrashTeamRacing.xml
++++ b/patches/CrashTeamRacing.xml
+@@ -1,5 +1,5 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<!-- Crash Team Racing Nitro-Fueled (CUSA13795) 1.21 patches, from
++<!-- Crash Team Racing Nitro-Fueled (CUSA13795 / CUSA14876) 1.21 patches, from
+      https://github.com/illusionyy/PS-Game-Patch (patches/xml/CrashTeamRacingUS-Orbis.xml),
+      authors illusion and TroyWarez. Selected in the in-game menu (bbport.ini patch_* keys),
+      compiled by scripts/patches.py into out/patches.bin at start.
+@@ -13,6 +13,7 @@
+ <Patch>
+     <TitleID>
+         <ID>CUSA13795</ID>
++        <ID>CUSA14876</ID>
+     </TitleID>
+     <Metadata Title="Crash Team Racing Nitro-Fueled"
+               Name="60 FPS Unlock"
+diff --git a/run.py b/run.py
+index 3ffd1ec61ec640e8541ec13b276d79c1cbeb22a3..8d154cd33054d8e1ca4d30c057c3f20a4c857acf 100644
+--- a/run.py
++++ b/run.py
+@@ -11,6 +11,7 @@ previous process to end first.
+ Works from the MSYS2 CLANG64 Python or a python.org Python.
+ """
+ import ctypes
++import json
+ import os
+ from pathlib import Path
+ import shutil
+@@ -176,12 +177,14 @@ def main():
+             fail(f'{game} has the PS4 PKG Tool layout (Image0 and Sc0): prepare it in the launcher first.')
+         fail(f'No eboot.bin in {game} (set BB_GAME_DIR to your {TITLE_ID} folder).')
+     # The game check compares the executable image with the supported one (CTR NF 1.21).
+-    check = subprocess.run([sys.executable, '-X', 'utf8', str(PORT / 'scripts' / 'game_check.py'), str(game)],
++    check = subprocess.run([sys.executable, '-X', 'utf8', str(PORT / 'scripts' / 'game_check.py'), str(game), '--json'],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding='utf-8', errors='replace', creationflags=no_console())
+     if check.returncode:
+         fail(check.stdout.strip() or 'Game check failed.', 2)
+-    env['BB_GAME_PROFILE'] = check.stdout.strip() or 'ctr'
++    profile = json.loads(check.stdout)
++    title_id, app_version = profile['title'], profile['version']
++    env['BB_GAME_PROFILE'] = profile['name']
+     say(f'Game profile: {env["BB_GAME_PROFILE"]}')
+ 
+     original_game = game.resolve()
+@@ -205,7 +208,7 @@ def main():
+         say(f'PS4 Pro mode: {env["BB_NEO"]} (BB_NEO=1 turns it on)')
+         user_dir = Path(env.get('BB_USER_DIR', data / 'user')).resolve()
+         if env.get('BB_CLEAR_SHADER_CACHE', '0') == '1':
+-            shutil.rmtree(user_dir / 'cache' / TITLE_ID, ignore_errors=True)
++            shutil.rmtree(user_dir / 'cache' / title_id, ignore_errors=True)
+             say('Shader cache: cleared for this launch (BB_CLEAR_SHADER_CACHE=1)')
+         env.setdefault('BB_PREUPLOAD', '1')
+         # The PC memory model (dma-buf guest memory) is Linux only: the 0.3 model on Windows.
+@@ -241,7 +244,7 @@ def main():
+             first = False
+             run_python('scripts/patches.py', '--patches-dir', env.get('BB_PATCHES_DIR', 'patches'),
+                        '--patches-config', env.get('BB_PATCHES_CONFIG', data / 'patches.json'),
+-                       '--app-version', APP_VERSION, '--title-id', TITLE_ID, '--out', out,
++                       '--app-version', app_version, '--title-id', title_id, '--out', out,
+                        '--settings', config)
+             if user_vblank:
+                 env['BB_VBLANK_HZ'] = user_vblank
+diff --git a/run.sh b/run.sh
+index b9b8f85465e7e82b62b0560bab034f9eeb222dbc..75a25273c0dcfc61cc396be0052eaaa839f96a0a 100755
+--- a/run.sh
++++ b/run.sh
+@@ -50,9 +50,10 @@ if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1
+ game=${BB_GAME_DIR:-orig/CUSA13795}
+ if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set BB_GAME_DIR)." >&2; exit 1; fi
+ # The game check (scripts/game_check.py) compares the executable image with the supported one
+-# (Crash Team Racing Nitro-Fueled CUSA13795 1.21) and names the profile the runtime reads.
+-profile=$("$PYTHON" scripts/game_check.py "$game") || { echo "$profile" >&2; exit 2; }
+-export BB_GAME_PROFILE=${profile:-ctr}
++# (registered CTR 1.21 editions) and names the profile the runtime reads.
++profile_info=$("$PYTHON" scripts/game_check.py "$game" --json) || { echo "$profile_info" >&2; exit 2; }
++read -r profile title_id app_version < <("$PYTHON" -c 'import json,sys; p=json.load(sys.stdin); print(p["name"],p["title"],p["version"])' <<< "$profile_info")
++export BB_GAME_PROFILE=$profile
+ echo "Game profile: $BB_GAME_PROFILE"
+ original_game=$game
+ game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \
+@@ -68,18 +69,23 @@ fi
+ "$PYTHON" scripts/link_modules.py "$game" --out "$out" --modules libc.prx libSceFios2.prx libSceNpToolkit2.prx
+ # SacredFire: symbol names for this eboot's host-side imports (shadPS4's aerolib list, fetched once).
+ "$PYTHON" tools/gen_import_names.py --out "$out"
+-"$PYTHON" scripts/content_profile.py "$game" --out "$out" --sku "${BB_CONTENT_SKU:-full}"
++"$PYTHON" scripts/content_profile.py "$game" --out "$out" --sku "${BB_CONTENT_SKU:-full}" --dlc-dir "${BB_DLC_DIR:-$data/dlc}"
+ # The game runs at its own 30 FPS against a 60 Hz vblank unless the 60 FPS patch is on. Patches
+ # come from patches/CrashTeamRacing.xml (community patches by illusion and TroyWarez, from
+ # https://github.com/illusionyy/PS-Game-Patch), chosen in the in-game menu (bbport.ini patch_*
+ # keys) or patches.json; BB_PATCHES_DIR adds a folder of further shadPS4-format XML files.
+ fps=${BB_FPS:-30}
+-"$PYTHON" scripts/patches.py --patches-dir "${BB_PATCHES_DIR:-patches}" --patches-config "${BB_PATCHES_CONFIG:-$data/patches.json}" \
+-    --app-version 01.21 --title-id CUSA13795 --out "$out" --settings "$BB_CONFIG"
++"$PYTHON" scripts/patches.py --patches-dir "${BB_PATCHES_DIR:-$data/patches}" --patches-config "${BB_PATCHES_CONFIG:-$data/patches.json}" \
++    --app-version "$app_version" --title-id "$title_id" --out "$out" --settings "$BB_CONFIG"
+ patch_args=(--patches "$out/patches.bin")
+ # BB_NEO=1: PS4 Pro mode (sceKernelIsNeoMode, 7-CPU mode, 5568 MiB direct memory); the game then
+ # picks its Pro rendering path. Off by default: the Steam Deck is closer to a base PS4.
+ export BB_NEO=${BB_NEO:-0}
++render_config=$("$PYTHON" scripts/render_config.py --settings "$BB_CONFIG" --neo "$BB_NEO" --memory "${BB_DMEM_MB:-0}")
++IFS=$'\t' read -r BB_NEO render_memory render_label <<< "$render_config"
++export BB_NEO
++if (( render_memory > 0 )); then export BB_DMEM_MB=$render_memory; fi
++echo "Internal resolution: $render_label"
+ echo "PS4 Pro mode: ${BB_NEO} (BB_NEO=1 turns it on)"
+ # The on-disk shader/pipeline cache (user/cache/CUSA13795) is kept across launches: the GPU
+ # library preloads every pipeline from earlier sessions at start, so areas seen before no longer
+@@ -87,7 +93,7 @@ echo "PS4 Pro mode: ${BB_NEO} (BB_NEO=1 turns it on)"
+ # deletes it first; the fur breakage that once forced a clear per launch is fixed
+ # (docs/sacredfire/06-fur.md: geometry specialization and preload fetch shader).
+ if [[ ${BB_CLEAR_SHADER_CACHE:-0} == 1 ]]; then
+-    rm -rf "${BB_USER_DIR:-$data/user}/cache/CUSA13795"
++    rm -rf "${BB_USER_DIR:-$data/user}/cache/$title_id"
+     echo "Shader cache: cleared for this launch (BB_CLEAR_SHADER_CACHE=1)"
+ fi
+ # With the 60 FPS patch the game's own limiter paces frames; a 60 Hz virtual vblank would
+@@ -192,14 +198,22 @@ echo "SacredFire ${version:-unknown version}"
+ export BB_GPU_USER_DIR=${BB_USER_DIR:-$data/user}
+ mkdir -p "$BB_GPU_USER_DIR"
+ probe_args=("$out/boot-linked.bin" --import-names "$out/import_names.txt" --content-profile "$out/content.bin" "${patch_args[@]}" --app0 "$game" --user "${BB_USER_DIR:-$data/user}" --timeout "${BB_TIMEOUT:-0}" "$@")
+-if [[ -n ${mod_game:-} ]]; then
+-    "$probe" "${probe_args[@]}" &
+-    mod_pid=$!
+-    trap 'kill -TERM "$mod_pid" 2>/dev/null || true' TERM INT
+-    mod_status=0
+-    wait "$mod_pid" || mod_status=$?
+-    # An interrupted wait must finish the child before removing its mounted view.
+-    if kill -0 "$mod_pid" 2>/dev/null; then wait "$mod_pid" || mod_status=$?; fi
+-    exit "$mod_status"
++# Wait instead of exec so the in-game Apply and restart action works on Linux too.
++"$probe" "${probe_args[@]}" &
++game_pid=$!
++trap 'kill -TERM "$game_pid" 2>/dev/null || true' TERM INT
++game_status=0
++wait "$game_pid" || game_status=$?
++if kill -0 "$game_pid" 2>/dev/null; then wait "$game_pid" || game_status=$?; fi
++if (( game_status == 75 )); then
++    if [[ -n ${mod_game:-} ]]; then
++        "$PYTHON" -c 'import shutil,sys; shutil.rmtree(sys.argv[1])' "$mod_game"
++    fi
++    trap - EXIT
++    export BB_GAME_DIR=$original_game
++    # Preserve the in-game display choice across a full process restart.
++    saved_fullscreen=$("$PYTHON" -c 'import sys; sys.path.insert(0,"scripts"); from patches import read_settings; from pathlib import Path; print(read_settings(Path(sys.argv[1])).get("fullscreen",sys.argv[2]))' "$BB_CONFIG" "${BB_FULLSCREEN:-0}")
++    export BB_FULLSCREEN=$saved_fullscreen
++    exec bash "$0" "$@"
+ fi
+-exec "$probe" "${probe_args[@]}"
++exit "$game_status"
+diff --git a/scripts/game_check.py b/scripts/game_check.py
+index 17e0bab7c0121f822a0ddfc70147f25bbd9fa999..ef954e8a0ae6ba0f7c6d6c4f87e57e5a0d006651 100644
+--- a/scripts/game_check.py
++++ b/scripts/game_check.py
+@@ -1,18 +1,20 @@
+ #!/usr/bin/env python3
+ """The game files this port runs, keyed on the executable's loaded image.
+ 
+-Profile: Crash Team Racing Nitro-Fueled CUSA13795 with the 1.21 update merged in. The check
++Profiles: Crash Team Racing Nitro-Fueled CUSA13795 and the verified CUSA14876 1.21 build. The check
+ compares the loaded executable image, whose hash is the same whatever tool dumped it (the SELF
+ headers around it differ). BB_SKIP_GAME_CHECK=1 skips it. bbport's Bloodborne profile was removed
+ on 2026-10-09.
+ 
+ Two builds of the 1.21 update exist: the one rebuilt for firmware 5.05 (sdk_ver=05050000 in
+ param.sfo; the image in SUPPORTED, which the port was developed on) and the original one for
+-firmware 6.72+. Same game, different executable. A 1.21 executable that is not a known old one is
++firmware 6.72+. Same game, different executable. For CUSA13795 only, a 1.21 executable that is not a known old one is
+ accepted as `variant='6.72+'`: patches.py finds its patch sites by signature instead of address,
+ and the log says it is the less-tested build.
+ """
+ import hashlib
++import argparse
++import json
+ import os
+ import sys
+ from pathlib import Path
+@@ -25,10 +27,19 @@ SUPPORTED = {
+         name='ctr', title='CUSA13795', version='01.21', game='Crash Team Racing Nitro-Fueled', update='CUSA13795-patch',
+         modules=('libc.prx', 'libSceFios2.prx', 'libSceNpToolkit2.prx'), patches=True),
+ }
++# Loaded-image hashes verified from the CUSA14876 base and 1.21 update.
++# Do not accept an unknown regional executable just because its SFO claims version 1.21.
++EU_IMAGE = '6b93d1f682fbfc5340dfd08360c8c0522a40f34585ec525c41537c40772bb39c'
++EU_BASE_IMAGE = 'da391ad520838261ec4421636afd4bd1d178ee63623333b035e42fc219f1f855'
++SUPPORTED[EU_IMAGE] = dict(
++    name='ctr', title='CUSA14876', version='01.21', game='Crash Team Racing Nitro-Fueled',
++    update='CUSA14876-patch', modules=('libc.prx', 'libSceFios2.prx', 'libSceNpToolkit2.prx'),
++    patches=True, variant='validated-1.21')
+ BY_TITLE = {p['title']: p for p in SUPPORTED.values()}
+ # Images that are known NOT to be 1.21: the base game's executable (1.00). With a 1.21 param.sfo
+ # these mean the update's eboot.bin was not copied in.
+ OLD_IMAGES = {
++    EU_BASE_IMAGE: '01.00',
+     'a9cdc80f2170624e08bdddab128fc9cdaf5c71aa90c00fc669d830e366ba6833': '01.00',
+ }
+ SUPPORTED_TITLE = 'CUSA13795'
+@@ -55,7 +66,10 @@ def profile(game, image_hash=None):
+     except (OSError, ValueError, IndexError, StopIteration, KeyError):
+         image_hash = None
+     if image_hash in SUPPORTED:
+-        return dict(SUPPORTED[image_hash], variant='5.05')
++        if problem(game, image_hash) is not None:
++            return None
++        found = SUPPORTED[image_hash]
++        return dict(found, variant=found.get('variant', '5.05'))
+     if image_hash and problem(game, image_hash) is None and os.environ.get('BB_SKIP_GAME_CHECK') != '1':
+         info = sfo_info(game)
+         return dict(BY_TITLE[info['TITLE_ID']], variant='6.72+')
+@@ -103,6 +117,11 @@ def problem(game, image_hash=None):
+     except (OSError, ValueError, IndexError, StopIteration, KeyError):
+         return 'unreadable', title, version
+     if image_hash in SUPPORTED:
++        expected = SUPPORTED[image_hash]
++        if title != expected['title']:
++            return 'identity_mismatch', title, version
++        if version != expected['version']:
++            return 'missing_update', title, version
+         return None
+     if title not in BY_TITLE:
+         return 'other_title', title, version
+@@ -110,6 +129,8 @@ def problem(game, image_hash=None):
+         return 'missing_update', title, version
+     if image_hash in OLD_IMAGES:
+         return 'wrong_eboot', title, version
++    if title == 'CUSA14876':
++        return 'unrecognized_build', title, version
+     return None  # another 1.21 build (6.72+): accepted, see the module docstring
+ 
+ 
+@@ -117,8 +138,10 @@ def explain(kind, title, version):
+     """What is wrong and what to do, for the log (English)."""
+     found = f'Found {title} version {version} (sce_sys/param.sfo).'
+     p = BY_TITLE.get(title, BY_TITLE[SUPPORTED_TITLE])
+-    supported = ', '.join(f"{q['game']} {q['title']} {q['version']}" for q in SUPPORTED.values())
++    supported = ', '.join(f"{q['game']} {q['title']} {q['version']}" for q in BY_TITLE.values())
+     return {
++        'identity_mismatch': f'{found} The executable belongs to a different registered edition. Use matching base and update files.',
++        'unrecognized_build': f'{found} This executable has not been validated for this edition. Use the supported decrypted 1.21 update; do not rename its metadata.',
+         'missing_update': f"{found} The port needs the {p['version']} update merged into the game folder: copy "
+                           f"everything from the dumped {p['version']} update (e.g. {p['update']}) into the "
+                           'game folder, replacing files (eboot.bin and sce_sys too).',
+@@ -135,10 +158,14 @@ def explain(kind, title, version):
+ 
+ if __name__ == '__main__':
+     # game_check.py GAME_DIR: prints the profile name (run.sh branches on it), or fails with the reason.
+-    game = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('.')
++    parser = argparse.ArgumentParser(description='Validate a prepared game and report its runtime profile.')
++    parser.add_argument('game', type=Path, nargs='?', default=Path('.'))
++    parser.add_argument('--json', action='store_true', help='print validated profile metadata')
++    args = parser.parse_args()
++    game = args.game
+     found = problem(game)
+     if found:
+         sys.exit('Unsupported game files: ' + explain(*found))
+     p = profile(game)
+-    print(p['name'] if p else 'unknown')
++    print(json.dumps(p) if args.json else (p['name'] if p else 'unknown'))
+ 
+diff --git a/scripts/patches.py b/scripts/patches.py
+index 3d258467b667a63c5bd154253f9fceaee2b0b713..71b7bad5b2ab5de5a6bfc3ab37504d323ad762c2 100644
+--- a/scripts/patches.py
++++ b/scripts/patches.py
+@@ -198,6 +198,15 @@ def external_patches(directory, app_version=APP_VERSION, title_id=TITLE_ID):
+     return found
+ 
+ 
++def available_patches(directory, app_version=APP_VERSION, title_id=TITLE_ID):
++    """Bundled patches plus user XML; a user entry with the same key overrides the bundle."""
++    bundled = Path(__file__).resolve().parent.parent / 'patches'
++    found = {key: (key, path, meta) for key, path, meta in external_patches(bundled, app_version, title_id)}
++    if Path(directory).resolve() != bundled.resolve():
++        found.update({key: (key, path, meta) for key, path, meta in external_patches(directory, app_version, title_id)})
++    return list(found.values())
++
++
+ def external_selection(found, config, ini=None):
+     """Selected patches: patches.json {"enabled": [...], "disabled": [...]} overrides each file's
+     isEnabled; bbport.ini patch_* keys (GAME_PATCH_KEYS, the in-game menu) add to it."""
+@@ -263,7 +272,7 @@ def main():
+     a=p.parse_args()
+     elf=(a.out/'eboot.elf').read_bytes()
+     segments=eboot_segments(elf)
+-    found=external_patches(a.patches_dir,a.app_version,a.title_id)
++    found=available_patches(a.patches_dir,a.app_version,a.title_id)
+     settings=read_settings(a.settings)
+     writes=compile_external(external_selection(found,a.patches_config,settings)+render_patches(settings),
+                             segments,elf)
+diff --git a/scripts/prepare.py b/scripts/prepare.py
+index a7ae9b93b40346cef722d569bae1008fdb561314..6e4316573dd981ef34a6ad7ac0136b8a68a5eba8 100644
+--- a/scripts/prepare.py
++++ b/scripts/prepare.py
+@@ -273,7 +273,7 @@ def prepare(game, out):
+     if game_profile and game_profile.get('variant'):
+         sdk = next((f.split('=', 1)[1] for f in str(report['sfo'].get('PUBTOOLINFO', '')).split(',')
+                     if f.startswith('sdk_ver=')), '?')
+-        print(f"Update build: {game_profile['version']} for firmware {game_profile['variant']} (param.sfo sdk_ver={sdk})"
++        print(f"Update build: {game_profile['title']} {game_profile['version']} ({game_profile['variant']}; sdk_ver={sdk})"
+               + ('' if game_profile['variant'] == '5.05' else '; patch sites are found by signature'))
+     print(f"{len(names)} imported symbols; {sum(counts.values()):,} relocations; {len(report['needed'])} required modules")
+     if missing:
+diff --git a/scripts/render_config.py b/scripts/render_config.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..466930d08914927d244453686d192bfd89375855
+--- /dev/null
++++ b/scripts/render_config.py
+@@ -0,0 +1,24 @@
++# SPDX-License-Identifier: GPL-2.0-or-later
++"""Resolve the same render plan for the Linux launcher and restart path."""
++import argparse
++from pathlib import Path
++from patches import read_settings, render_plan
++
++
++def configuration(settings, neo='0', memory='0'):
++    plan = render_plan(settings)
++    if not plan:
++        return str(neo), str(memory or '0'), 'Game default'
++    memory = int(memory or '0')
++    if plan['heap']:
++        memory = max(memory, 7168)
++    return ('1' if plan['pro'] else '0'), str(memory), plan['label']
++
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser(description=__doc__)
++    p.add_argument('--settings', required=True, type=Path)
++    p.add_argument('--neo', default='0')
++    p.add_argument('--memory', default='0')
++    a = p.parse_args()
++    print('\t'.join(configuration(read_settings(a.settings), a.neo, a.memory)))
+diff --git a/src/probe.c b/src/probe.c
+index 4f89fb7e92cb365fc5994c059dbe8d00888f51b6..89a398995b59d02014c1d0ca2024c2337dad1df9 100644
+--- a/src/probe.c
++++ b/src/probe.c
+@@ -450,14 +450,12 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
+     fclose(f);
+     printf("Patches: %" PRIu64 " writes, %" PRIu64 " bytes applied, %" PRIu64 " pointers rebased\n",count,bytes,rebased);
+ }
+-/* Restarts the game through run.sh (the settings menu: a new render resolution is a patch
+- * applied at start). Descriptors are closed first so the old GPU device and its memory are
+- * released before the new process opens its own. */
++/* Restarts through the platform wrapper after releasing the old process and GPU resources.
++ * New render-resolution patches and saved display settings are applied on the next launch. */
+ volatile int runtime_restarting;
+ void runtime_restart(void) {
+     fflush(NULL);
+-    /* The GPU threads still run until exec: their Vulkan calls fail once the device fd is
+-     * closed below, and an assertion there must not end the process (exit 23) before exec. */
++    /* Keep exit-time GPU failures from overriding a requested restart. */
+     runtime_restarting = 1;
+     __sync_synchronize();
+ #ifdef _WIN32
+@@ -487,11 +485,10 @@ void runtime_restart(void) {
+     /* The new launch waits for this process's GPU device to go away (run.py --after). */
+     TerminateProcess(GetCurrentProcess(),0);
+ #else
++    /* Let run.sh release this process's GPU resources and mod view before relaunching.
++     * The wrapper reloads saved display/render settings instead of inheriting stale overrides. */
+     puts("Runtime: restarting through run.sh");
+-    syscall(SYS_close_range, 3u, ~0u, 0u);
+-    execlp("bash", "bash", "run.sh", (char *)NULL);
+-    perror("runtime_restart: exec");
+-    _exit(1);
++    _exit(75);
+ #endif
+ }
+ 
+diff --git a/tests/test_control_bindings.py b/tests/test_control_bindings.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bb38ef31cfcc0dafc9d8b44962e51ef42342bab8
+--- /dev/null
++++ b/tests/test_control_bindings.py
+@@ -0,0 +1,90 @@
++"""Runtime-compatible keyboard/gamepad names, validation and scoped resets."""
++from pathlib import Path
++import re
++import shutil
++import subprocess
++import tempfile
++import sys
++import unittest
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT / 'launcher'))
++import control_bindings as controls
++
++
++class BindingTests(unittest.TestCase):
++    def test_actions_match_the_runtime(self):
++        source = (ROOT / 'src/runtime_pad.c').read_text()
++        table = source.split('input_names[IN_COUNT]={', 1)[1].split('};', 1)[0]
++        actions = re.findall(r'"([a-z0-9_]+)"', table)
++        self.assertEqual(set(controls.KEY_DEFAULTS), set(actions))
++        self.assertEqual(set(controls.PAD_DEFAULTS), set(actions[:actions.index('move_up')]))
++
++    def test_reset_keeps_other_controls_settings_and_comments(self):
++        values = {'key.cross': 'F', 'pad.cross': 'x', 'show_fps': '1', 'custom.setting': 'yes'}
++        lines = ['# key.cross=note', 'key.cross=F', 'pad.cross=x', 'show_fps=1', 'custom.setting=yes']
++        reset, kept = controls.reset(values, lines, 'key')
++        self.assertNotIn('key.cross', reset)
++        self.assertEqual(reset['pad.cross'], 'x')
++        self.assertEqual(reset['custom.setting'], 'yes')
++        self.assertIn('# key.cross=note', kept)
++        self.assertNotIn('key.cross=F', kept)
++        self.assertEqual(controls.binding(reset, 'key', 'cross'), 'Space')
++
++    def test_explicit_unbound_is_distinct_from_default(self):
++        self.assertEqual(controls.binding({}, 'key', 'cross'), 'Space')
++        self.assertEqual(controls.binding({'key.cross': ''}, 'key', 'cross'), '')
++
++    def test_defaults_and_custom_values_are_valid_sdl_names(self):
++        try:
++            controls.sdl()
++        except OSError:
++            self.skipTest('SDL3 is required')
++        for prefix in ('key', 'pad'):
++            for action, value in controls.defaults(prefix).items():
++                with self.subTest(prefix=prefix, action=action):
++                    self.assertEqual(controls.normalized(prefix, value.split(',')), value)
++        self.assertEqual(controls.normalized('key', ['Space', 'F', 'Space', '']), 'Space,F')
++        self.assertEqual(controls.normalized('key', ['', '', '', '']), '')
++        for values in (['not-a-key'], ['A', 'B', 'C', 'D', 'E']):
++            with self.assertRaises(ValueError):
++                controls.normalized('key', values)
++
++
++    def test_displayed_defaults_match_compiled_runtime_constants(self):
++        compiler = shutil.which('cc')
++        if not compiler or not Path('/usr/include/SDL3/SDL_scancode.h').is_file():
++            self.skipTest('C compiler and SDL3 headers are required')
++        source = (ROOT / 'src/runtime_pad.c').read_text().split('static void bind_defaults(void)', 1)[1].split('    memset(bindings', 1)[0]
++        keyboard, pads = source.split('} pads[]={', 1)
++        rows = []
++        for prefix, text in (('key', keyboard), ('pad', pads)):
++            for action, constant in re.findall(r'\{IN_([A-Z0-9_]+),\s*(SDL_[A-Z0-9_]+|PAD_[A-Z0-9_]+)\}', text):
++                rows.append((prefix, action.lower(), constant))
++        lines = ['#include <stdio.h>', '#include <SDL3/SDL_scancode.h>', '#include <SDL3/SDL_gamepad.h>', 'int main(void) {']
++        for prefix, action, constant in rows:
++            if constant.startswith('SDL_'):
++                lines.append(f'printf("{prefix} {action} {constant} %d\\n", (int){constant});')
++        lines += ['return 0;', '}']
++        with tempfile.TemporaryDirectory() as folder:
++            executable = str(Path(folder) / 'constants')
++            subprocess.run([compiler, '-x', 'c', '-', '-o', executable], input='\n'.join(lines),
++                           text=True, check=True, capture_output=True, timeout=15)
++            output = subprocess.check_output([executable], text=True, timeout=3)
++        resolved = {}
++        for line in output.splitlines():
++            prefix, action, constant, number = line.split()
++            fn = controls.sdl().SDL_GetScancodeName if prefix == 'key' else controls.sdl().SDL_GetGamepadStringForButton
++            resolved[prefix, action, constant] = fn(int(number)).decode()
++        actual = {'key': {key: [] for key in controls.KEY_DEFAULTS},
++                  'pad': {key: [] for key in controls.PAD_DEFAULTS}}
++        for prefix, action, constant in rows:
++            if constant == 'PAD_LEFT_TRIGGER':
++                value = 'lefttrigger'
++            elif constant == 'PAD_RIGHT_TRIGGER':
++                value = 'righttrigger'
++            else:
++                value = resolved[prefix, action, constant]
++            actual[prefix][action].append(value)
++        for prefix in ('key', 'pad'):
++            self.assertEqual({k: ','.join(v) for k, v in actual[prefix].items()}, controls.defaults(prefix))
+diff --git a/tests/test_game_check.py b/tests/test_game_check.py
+index 45f9f0b7ba732ff8ace3abcf657428127584c0b3..4e21857ca21c268c4d2907799d32dd578eb50b3c 100644
+--- a/tests/test_game_check.py
++++ b/tests/test_game_check.py
+@@ -104,5 +104,37 @@ class GameCheckTests(unittest.TestCase):
+             self.assertIn('CUSA', game_check.explain(kind, 'CUSA00000', '01.00'))
+ 
+ 
++
++    def test_verified_cusa14876_update_is_recognized(self):
++        game = self.game('CUSA14876', '01.21')
++        with mock.patch.object(game_check, 'image_sha256', return_value=game_check.EU_IMAGE):
++            self.assertIsNone(game_check.problem(game))
++            profile = game_check.profile(game)
++            self.assertEqual(profile['title'], 'CUSA14876')
++            self.assertEqual(profile['name'], 'ctr')
++            self.assertEqual(profile['variant'], 'validated-1.21')
++
++    def test_unknown_cusa14876_executable_does_not_pass_by_metadata_alone(self):
++        game = self.game('CUSA14876', '01.21')
++        self.assertEqual(game_check.problem(game)[0], 'unrecognized_build')
++        self.assertIsNone(game_check.profile(game))
++
++    def test_cusa14876_base_requires_the_update(self):
++        game = self.game('CUSA14876', '01.00')
++        with mock.patch.object(game_check, 'image_sha256', return_value=game_check.EU_BASE_IMAGE):
++            self.assertEqual(game_check.problem(game)[0], 'missing_update')
++        game = self.game('CUSA14876', '01.21')
++        with mock.patch.object(game_check, 'image_sha256', return_value=game_check.EU_BASE_IMAGE):
++            self.assertEqual(game_check.problem(game)[0], 'wrong_eboot')
++
++    def test_known_executable_must_match_the_edition_metadata(self):
++        for title, image in (('CUSA13795', game_check.EU_IMAGE), ('CUSA14876', game_check.SUPPORTED_IMAGE)):
++            with self.subTest(title=title):
++                game = self.game(title, '01.21')
++                with mock.patch.object(game_check, 'image_sha256', return_value=image):
++                    self.assertEqual(game_check.problem(game)[0], 'identity_mismatch')
++                    self.assertIsNone(game_check.profile(game))
++
++
+ if __name__ == '__main__':
+     unittest.main()
+diff --git a/tests/test_launcher_features.py b/tests/test_launcher_features.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e843ff5ae0c92c2fb947085e1b5a7bbd26a9098a
+--- /dev/null
++++ b/tests/test_launcher_features.py
+@@ -0,0 +1,221 @@
++"""GTK integration for mapping persistence and update-check UI state."""
++import json
++import os
++from pathlib import Path
++import sys
++import tempfile
++import time
++import unittest
++import uuid
++from unittest.mock import patch
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT / 'launcher'))
++try:
++    import sacredfire_launcher as launcher
++    from gi.repository import Adw, Gio, Gtk, GLib
++except (ImportError, ValueError):
++    launcher = None
++
++
++@unittest.skipIf(launcher is None, 'GTK4 and libadwaita are required')
++class LauncherFeatureTests(unittest.TestCase):
++    def setUp(self):
++        if not Gtk.init_check():
++            self.skipTest('A graphical display is required')
++        self.tmp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.tmp.cleanup)
++        folder = Path(self.tmp.name)
++        (folder / 'settings.json').write_text(json.dumps({'game_dir': ''}))
++        for target, value in (('CONFIG_FILE', folder / 'settings.json'), ('DATA_DIR', folder)):
++            patcher = patch.object(launcher, target, value)
++            patcher.start()
++            self.addCleanup(patcher.stop)
++        patcher = patch.dict(os.environ, {'BB_CONFIG': str(folder / 'bbport.ini')})
++        patcher.start()
++        self.addCleanup(patcher.stop)
++        self.app = Adw.Application(application_id='io.github.CTRNative.T' + uuid.uuid4().hex, flags=Gio.ApplicationFlags.NON_UNIQUE)
++        self.app.register(None)
++        self.window = launcher.LauncherWindow(self.app)
++        self.addCleanup(self.window.destroy)
++        self.window.present()
++        self.drain()
++
++    def drain(self, duration=0.1):
++        end = time.monotonic() + duration
++        context = GLib.MainContext.default()
++        while time.monotonic() < end:
++            if context.pending():
++                context.iteration(False)
++            else:
++                time.sleep(0.002)
++
++    def wait_for_update(self):
++        deadline = time.monotonic() + 3
++        while not self.window.update_button.get_sensitive() and time.monotonic() < deadline:
++            self.drain(0.02)
++        self.assertTrue(self.window.update_button.get_sensitive())
++
++    def test_statistics_persist_and_apply_to_direct_play(self):
++        self.window.mangohud_row.set_active(True)
++        self.window.stats_interval_row.set_selected(1)
++        self.window.store()
++        saved = launcher.load_settings()
++        self.assertTrue(saved['mangohud'])
++        self.assertEqual(saved['stats_interval'], '2000')
++        with patch.dict(os.environ, {}, clear=True):
++            env = launcher.game_environment(saved)
++        self.assertEqual(env['MANGOHUD'], '1')
++        self.assertIn('fps_sampling_period=2000', env['MANGOHUD_CONFIG'])
++        for metric in ('fps', 'frametime', 'cpu_stats', 'gpu_stats', 'vram', 'ram'):
++            self.assertIn(metric, env['MANGOHUD_CONFIG'].split(','))
++        with patch.dict(os.environ, {'MANGOHUD_CONFIG': 'fps_only'}, clear=True):
++            self.assertEqual(launcher.game_environment(saved)['MANGOHUD_CONFIG'], 'fps_only')
++
++    def test_graphics_ports_and_window_mode_share_runtime_settings(self):
++        self.window.render_row.set_selected(self.window.render_row.values.index('720'))
++        self.window.upscale_row.set_selected(self.window.upscale_row.values.index('fsr3'))
++        self.window.limit_row.set_selected(self.window.limit_row.values.index('144'))
++        self.window.fullscreen_row.set_active(True)
++        self.window.async_row.set_active(True)
++        self.window.port_rows[2].values.append('test-controller-guid')
++        self.window.port_rows[2].get_model().append('Test controller')
++        self.window.port_rows[2].set_selected(1)
++        self.window.store()
++        values, _ = launcher.load_ini()
++        for key, expected in {'render_res':'720','temporal':'fsr3','fps_limit':'144',
++                              'fullscreen':'1','async_pipelines':'1','port.2':'test-controller-guid'}.items():
++            self.assertEqual(values[key],expected)
++        self.assertNotIn('dlss', self.window.upscale_row.values)
++        self.assertEqual(launcher.game_environment(launcher.load_settings())['BB_FULLSCREEN'], '1')
++        # The running game's menu is authoritative after it exits.
++        values.update(fullscreen='0', fps_limit='72', render_res='1080')
++        launcher.save_ini(values, [])
++        class Exited:
++            def wait_finish(self, _result): pass
++            def get_if_exited(self): return True
++            def get_exit_status(self): return 0
++        self.window.on_exit(Exited(), None)
++        self.assertFalse(self.window.fullscreen_row.get_active())
++        self.assertEqual(launcher.combo_value(self.window.limit_row),'72')
++        self.window.store()
++        self.assertEqual(launcher.game_environment(launcher.load_settings())['BB_FULLSCREEN'], '0')
++
++    def test_library_failure_and_retry_do_not_block_gtk(self):
++        self.window.library_task('Fixture operation', lambda: (_ for _ in ()).throw(OSError('fixture failure')))
++        deadline = time.monotonic() + 3
++        while self.window.library_busy and time.monotonic() < deadline: self.drain(0.02)
++        self.assertFalse(self.window.library_busy)
++        self.assertTrue(self.window.library_retry.get_visible())
++        # No configured game is allowed to replace the operation error with an empty-state message.
++        self.assertIn('fixture failure',self.window.library_status.get_subtitle())
++        self.window.library_task('Fixture operation', lambda: 'success')
++        deadline = time.monotonic() + 3
++        while self.window.library_busy and time.monotonic() < deadline: self.drain(0.02)
++        self.assertFalse(self.window.library_retry.get_visible())
++        self.assertIn('success',self.window.library_status.get_subtitle())
++
++    def test_higher_frame_limit_enables_required_unlock_patch(self):
++        self.window.limit_row.set_selected(self.window.limit_row.values.index('144'))
++        self.assertTrue(self.window.patch_rows['patch_60fps'].get_active())
++        self.window.store()
++        values, _ = launcher.load_ini()
++        self.assertEqual((values['fps_limit'], values['patch_60fps']),('144','1'))
++        self.window.patch_rows['patch_60fps'].set_active(False)
++        self.assertEqual(launcher.combo_value(self.window.limit_row),'30')
++        self.window.patch_rows['patch_60fps'].set_active(True)
++        self.assertEqual(launcher.combo_value(self.window.limit_row),'60')
++
++    def test_library_lists_managed_dlc_and_additional_patch_switches(self):
++        directory = launcher.DATA_DIR / 'patches'
++        directory.mkdir()
++        (directory / 'extra.xml').write_text('<Patch><TitleID><ID>CUSA14876</ID></TitleID><Metadata Name="Extra" AppVer="01.21" AppElf="eboot.bin"><PatchList/></Metadata></Patch>')
++        dlc = launcher.DATA_DIR / 'dlc'
++        dlc.mkdir()
++        (dlc / 'own.pkg').write_bytes(b'fixture')
++        with patch.object(launcher.game_check, 'sfo_info', return_value={'TITLE_ID':'CUSA14876'}), \
++             patch.object(launcher.library.content_profile,'find_addons',return_value=[('CTRDELUXEPACK001','Deluxe','own.pkg')]):
++            self.window.refresh_library()
++        row = self.window.dlc_list_rows[0]
++        self.assertIsInstance(row,Adw.SwitchRow)
++        row.set_active(False)
++        self.assertIn('CTRDELUXEPACK001',launcher.load_settings()['dlc_disabled'])
++        extra = self.window.extra_patch_rows[0]
++        self.assertIsInstance(extra,Adw.SwitchRow)
++        extra.set_active(True)
++        config = json.loads((launcher.DATA_DIR / 'patches.json').read_text())
++        self.assertIn('extra.xml/Extra',config['enabled'])
++
++    def test_recording_captures_physical_key_and_escape_cancels(self):
++        self.window.on_edit_binding(None, 'key', 'cross')
++        dialog = self.window.get_visible_dialog()
++        def buttons(widget):
++            result = [widget] if isinstance(widget,Gtk.Button) and widget.get_label() == 'Record' else []
++            child = widget.get_first_child()
++            while child:
++                result.extend(buttons(child)); child = child.get_next_sibling()
++            return result
++        records = buttons(dialog.get_extra_child())
++        self.assertEqual(len(records),4)
++        records[0].emit('clicked')
++        self.assertTrue(dialog.record_controller.emit('key-pressed', launcher.Gdk.KEY_f, 41, 0))
++        drops = self.dropdowns(dialog.get_extra_child())
++        options = [''] + list(launcher.control_bindings.choices('key'))
++        self.assertEqual(options[drops[0].get_selected()],'F')
++        records[0].emit('clicked')
++        self.assertTrue(dialog.record_controller.emit('key-pressed', launcher.Gdk.KEY_Escape, 9, 0))
++        self.assertEqual(options[drops[0].get_selected()],'F')
++        dialog.emit('response','save');dialog.force_close()
++        self.assertEqual(launcher.load_ini()[0]['key.cross'],'F')
++
++    def dropdowns(self, widget):
++        result = [widget] if isinstance(widget, Gtk.DropDown) else []
++        child = widget.get_first_child()
++        while child:
++            result.extend(self.dropdowns(child))
++            child = child.get_next_sibling()
++        return result
++
++    def test_mapping_dialog_saves_only_selected_controls_and_reset_preserves_other_settings(self):
++        launcher.ini_path().write_text('# keep this comment\nshow_fps=1\npad.cross=x\n')
++        self.window.stack.set_visible_child_name('controls')
++        self.window.on_edit_binding(None, 'key', 'cross')
++        dialog = self.window.get_visible_dialog()
++        self.assertIsNotNone(dialog)
++        dropdowns = self.dropdowns(dialog.get_extra_child())
++        self.assertEqual(len(dropdowns), 4)
++        options = [''] + list(launcher.control_bindings.choices('key'))
++        dropdowns[0].set_selected(options.index('F'))
++        dialog.emit('response', 'save')
++        dialog.force_close()
++        self.drain()
++        values, lines = launcher.load_ini()
++        self.assertEqual(values['key.cross'], 'F')
++        self.assertEqual(values['pad.cross'], 'x')
++        self.assertEqual(values['show_fps'], '1')
++        self.assertIn('# keep this comment', lines)
++        self.window.on_reset_bindings(None, 'key')
++        dialog = self.window.get_visible_dialog()
++        dialog.emit('response', 'reset')
++        dialog.force_close()
++        self.drain()
++        values, _ = launcher.load_ini()
++        self.assertNotIn('key.cross', values)
++        self.assertEqual(values['pad.cross'], 'x')
++        self.assertEqual(values['show_fps'], '1')
++
++    def test_manual_update_check_and_retry_leave_ui_responsive(self):
++        result = {'installed': '1', 'version': '2', 'update_available': True}
++        with patch.object(launcher.native_update, 'check', return_value=result) as check:
++            self.window.on_check_updates(None)
++            self.wait_for_update()
++            check.assert_called_once_with(launcher.PORT_DIR)
++        self.assertTrue(self.window.update_button.get_sensitive())
++        self.assertTrue(self.window.install_update_button.get_visible())
++        self.assertIn('Available: 2', self.window.update_row.get_subtitle())
++        with patch.object(launcher.native_update, 'check', side_effect=TimeoutError('offline')):
++            self.window.on_check_updates(None)
++            self.wait_for_update()
++        self.assertFalse(self.window.install_update_button.get_visible())
++        self.assertTrue(self.window.update_button.get_sensitive())
++        self.assertIn('offline', self.window.update_row.get_subtitle())
+diff --git a/tests/test_launcher_startup.py b/tests/test_launcher_startup.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b629614b006d1839083c592d10f4d7db67e1fd34
+--- /dev/null
++++ b/tests/test_launcher_startup.py
+@@ -0,0 +1,54 @@
++"""Direct-play startup behavior without spawning a game or a GTK window."""
++from pathlib import Path
++import sys
++import tempfile
++import unittest
++from unittest.mock import patch
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT / 'launcher'))
++
++try:
++    import sacredfire_launcher as launcher
++except (ImportError, ValueError):
++    launcher = None
++
++
++@unittest.skipIf(launcher is None, 'GTK4 and libadwaita are required')
++class DirectPlayTests(unittest.TestCase):
++    def test_unconfigured_shortcut_opens_setup_instead_of_exiting_silently(self):
++        settings = {**launcher.DEFAULTS, 'game_dir': ''}
++        with patch.object(launcher, 'load_settings', return_value=settings), \
++             patch.object(launcher, 'LauncherApp') as app, \
++             patch.object(launcher.os, 'execvpe') as execute:
++            app.return_value.run.return_value = 0
++            self.assertEqual(launcher.play(), 0)
++            app.return_value.run.assert_called_once_with([])
++            execute.assert_not_called()
++
++    def test_missing_game_directory_also_opens_setup(self):
++        with tempfile.TemporaryDirectory() as folder:
++            settings = {**launcher.DEFAULTS, 'game_dir': str(Path(folder) / 'missing')}
++            with patch.object(launcher, 'load_settings', return_value=settings), \
++                 patch.object(launcher, 'LauncherApp') as app, \
++                 patch.object(launcher.os, 'execvpe') as execute:
++                app.return_value.run.return_value = 0
++                self.assertEqual(launcher.play(), 0)
++                app.return_value.run.assert_called_once_with([])
++                execute.assert_not_called()
++
++    def test_configured_shortcut_uses_saved_game_settings(self):
++        with tempfile.TemporaryDirectory() as folder:
++            (Path(folder) / 'eboot.bin').write_bytes(b'fixture')
++            settings = {**launcher.DEFAULTS, 'game_dir': folder, 'fullscreen': True}
++            with patch.object(launcher, 'load_settings', return_value=settings), \
++                 patch.object(launcher, 'LauncherApp') as app, \
++                 patch.object(launcher.os, 'chdir'), \
++                 patch.object(launcher.os, 'execvpe') as execute:
++                launcher.play()
++                app.assert_not_called()
++                executable, args, env = execute.call_args.args
++                self.assertEqual(executable, 'bash')
++                self.assertEqual(args, ['bash', str(launcher.PORT_DIR / 'run.sh')])
++                self.assertEqual(env['BB_GAME_DIR'], folder)
++                self.assertEqual(env['BB_FULLSCREEN'], '1')
+diff --git a/tests/test_library.py b/tests/test_library.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ea1804e00bcb0e197527852cdcd2e01f49866a9
+--- /dev/null
++++ b/tests/test_library.py
+@@ -0,0 +1,179 @@
++"""Library file operations: recovery, identity, validation and source preservation."""
++import json
++import os
++from pathlib import Path
++import struct
++import sys
++import tempfile
++import unittest
++from unittest.mock import patch
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT / 'launcher'))
++import library
++sys.path.insert(0, str(ROOT / 'scripts'))
++import render_config
++
++
++def sfo_bytes(values):
++    keys = data = b''
++    entries = []
++    for key, value in values.items():
++        value = str(value).encode() + b'\0'
++        entries.append((len(keys), 0x204, len(value), len(value), len(data)))
++        keys += key.encode() + b'\0'
++        data += value
++    offset = 20 + 16 * len(entries)
++    return struct.pack('<4sIIII', b'\0PSF', 0x101, offset, offset + len(keys), len(entries)) + b''.join(struct.pack('<HHIII', *e) for e in entries) + keys + data
++
++
++class LibraryTests(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.root = Path(self.temp.name)
++        self.active = self.root / 'user/savedata/1/CUSA14876'
++        self.backups = self.root / 'backups'
++
++    def slot(self, root, value, name='slot'):
++        (root / name).mkdir(parents=True)
++        (root / name / 'data').write_text(value)
++        meta = root / (name + '.sce_sys')
++        meta.mkdir()
++        (meta / 'param.bin').write_bytes(bytes(1328))
++        return root
++
++    def test_import_backs_up_and_replaces_complete_slot_preserving_other_slots(self):
++        self.slot(self.active, 'old')
++        self.slot(self.active, 'keep', 'other')
++        (self.active / 'slot/obsolete').write_text('stale')
++        source = self.slot(self.root / 'import', 'new')
++        library.import_saves(source, self.active, self.backups, 'CUSA14876')
++        self.assertEqual((self.active / 'slot/data').read_text(), 'new')
++        self.assertFalse((self.active / 'slot/obsolete').exists())
++        self.assertEqual((self.active / 'other/data').read_text(), 'keep')
++        backup = next(self.backups.iterdir())
++        self.assertEqual((backup / 'slot/data').read_text(), 'old')
++        self.assertEqual((source / 'slot/data').read_text(), 'new')
++        self.assertEqual(json.loads((backup / '.ctr-save.json').read_text())['title'], 'CUSA14876')
++
++    def test_restore_replaces_all_slots_and_preserves_backup(self):
++        self.slot(self.active, 'old')
++        source = self.slot(self.root / 'restore', 'restored', 'restored')
++        library.install_saves(source, self.active, self.backups, replace=True, title='CUSA14876')
++        self.assertFalse((self.active / 'slot').exists())
++        self.assertEqual((self.active / 'restored/data').read_text(), 'restored')
++        self.assertTrue(any(self.backups.iterdir()))
++
++    def test_failed_backup_leaves_active_save_untouched(self):
++        self.slot(self.active, 'old')
++        source = self.slot(self.root / 'import', 'new')
++        with patch.object(library, 'backup', side_effect=OSError('disk full')):
++            with self.assertRaises(OSError): library.install_saves(source, self.active, self.backups)
++        self.assertEqual((self.active / 'slot/data').read_text(), 'old')
++
++    def test_publish_failure_rolls_back(self):
++        self.slot(self.active, 'old')
++        source = self.slot(self.root / 'import', 'new')
++        rename = Path.rename
++        def fail_ready(path, target):
++            if path.name == 'ready': raise OSError('publication failed')
++            return rename(path, target)
++        with patch.object(Path, 'rename', fail_ready):
++            with self.assertRaises(OSError): library.install_saves(source, self.active, self.backups)
++        self.assertEqual((self.active / 'slot/data').read_text(), 'old')
++
++    def test_unsafe_or_unrecognized_imports_cannot_overwrite_saves(self):
++        self.slot(self.active, 'old')
++        source = self.root / 'source'
++        source.mkdir()
++        for name in ('../escape', '.', '..', 'bad/name'):
++            with self.assertRaises(ValueError): library.safe_name(name)
++        (source / 'link').symlink_to(self.active, target_is_directory=True)
++        with self.assertRaises(ValueError): library.import_saves(source, self.active, self.backups, 'CUSA14876')
++        self.assertEqual((self.active / 'slot/data').read_text(), 'old')
++        with self.assertRaises(ValueError): library.install_saves(self.active, self.active, self.backups)
++
++    def test_cross_region_manifest_is_rejected(self):
++        source = self.slot(self.root / 'source', 'new')
++        (source / '.ctr-save.json').write_text('{"title":"CUSA13795"}')
++        with self.assertRaisesRegex(ValueError, 'another game edition'):
++            library.import_saves(source, self.active, self.backups, 'CUSA14876')
++        self.assertFalse(self.active.exists())
++
++    def test_decrypted_save_metadata_conversion_and_region_check(self):
++        source = self.root / 'decrypted'
++        (source / 'sce_sys').mkdir(parents=True)
++        (source / 'save.dat').write_bytes(b'game save')
++        values = {'TITLE_ID':'CUSA14876', 'SAVEDATA_DIRECTORY':'slot', 'MAINTITLE':'Title', 'SUBTITLE':'Checkpoint', 'DETAIL':'Details'}
++        (source / 'sce_sys/param.sfo').write_bytes(sfo_bytes(values))
++        with self.assertRaises(ValueError): library.import_saves(source, self.active, self.backups, 'CUSA13795')
++        library.import_saves(source, self.active, self.backups, 'CUSA14876')
++        blob = (self.active / 'slot.sce_sys/param.bin').read_bytes()
++        self.assertEqual(len(blob),1328)
++        self.assertEqual(blob[:128].rstrip(b'\0'),b'Title')
++        self.assertEqual((self.active / 'slot/save.dat').read_bytes(), b'game save')
++        self.assertFalse((self.active / 'slot/sce_sys').exists())
++
++    def test_export_is_new_and_rejects_recursive_target(self):
++        self.slot(self.active, 'old')
++        out = self.root / 'export'
++        library.copy_new(self.active, out)
++        with self.assertRaises(ValueError): library.copy_new(self.active, out)
++        with self.assertRaises(ValueError): library.copy_new(self.active, self.active / 'recursive')
++        self.assertEqual((out / 'slot/data').read_text(), 'old')
++
++    def test_dlc_validates_edition_and_preserves_original(self):
++        source = self.root / 'own.pkg'
++        source.write_bytes(b'fixture')
++        info = {'CATEGORY':'ac','TITLE_ID':'CUSA14876','CONTENT_ID':'EP0002-CUSA14876_00-CTRDELUXEPACK001'}
++        with patch.object(library.content_profile, 'pkg_param', return_value=info):
++            target = library.add_dlc(source, self.root / 'dlc', 'CUSA14876')
++            self.assertEqual(target.read_bytes(), b'fixture')
++            with self.assertRaises(ValueError): library.add_dlc(source, self.root / 'dlc', 'CUSA14876')
++            with self.assertRaises(ValueError): library.add_dlc(source, self.root / 'other', 'CUSA13795')
++        self.assertTrue(source.exists())
++
++    def test_game_preparation_merges_into_new_folder_and_preserves_sources(self):
++        base, update = self.root / 'base', self.root / 'update'
++        for folder, category, version in ((base,'gd','01.00'),(update,'gp','01.21')):
++            (folder / 'sce_sys').mkdir(parents=True)
++            (folder / 'sce_sys/param.sfo').write_bytes(sfo_bytes({'TITLE_ID':'CUSA14876','CATEGORY':category,'APP_VER':version}))
++            (folder / 'eboot.bin').write_bytes(version.encode())
++        (base / 'sce_module').mkdir()
++        for module in library.game_check.BY_TITLE['CUSA14876']['modules']:
++            (base / 'sce_module' / module).write_bytes(b'fixture module')
++        with patch.object(library.game_check, 'image_sha256', return_value=library.game_check.EU_IMAGE):
++            target = library.prepare_game(base, update, self.root / 'data')
++        self.assertEqual((target / 'eboot.bin').read_bytes(),b'01.21')
++        self.assertEqual((base / 'eboot.bin').read_bytes(),b'01.00')
++        self.assertEqual((update / 'eboot.bin').read_bytes(),b'01.21')
++        with patch.object(library.game_check, 'image_sha256', return_value='unverified'):
++            with self.assertRaises(ValueError): library.prepare_game(base, update, self.root / 'data')
++        self.assertEqual(len(list((self.root / 'data/prepared').iterdir())),1)
++
++    def test_remove_dlc_cannot_remove_an_external_original(self):
++        source = self.root / 'own.pkg'
++        source.write_bytes(b'fixture')
++        managed = self.root / 'dlc'
++        managed.mkdir()
++        with self.assertRaises(ValueError): library.remove_dlc(source, managed, 'CUSA14876')
++        target = managed / 'copy.pkg'
++        target.write_bytes(b'fixture')
++        info = {'CATEGORY':'ac','TITLE_ID':'CUSA14876','CONTENT_ID':'EP0002-CUSA14876_00-CTRDELUXEPACK001'}
++        with patch.object(library.content_profile,'pkg_param', return_value=info):
++            library.remove_dlc(target, managed, 'CUSA14876')
++        self.assertFalse(target.exists())
++        self.assertTrue(source.exists())
++
++    def test_render_plan_matches_windows_resolution_and_memory(self):
++        for value in ('480','720','1440','1620','2160'):
++            neo, memory, label = render_config.configuration({'render_res':value})
++            self.assertEqual(neo,'1')
++            self.assertIn(value,label)
++            self.assertEqual(memory, '7168' if value == '2160' else '0')
++        self.assertEqual(render_config.configuration({'render_res':'1080'})[:2],('0','0'))
++        self.assertEqual(render_config.configuration({'render_res':'2160'}, memory='8192')[1],'8192')
++
++
++if __name__ == '__main__': unittest.main()
+diff --git a/tests/test_mods.py b/tests/test_mods.py
+index 795f2f70bbf8c1ffcdb317f07983d0f1aa39cd9c..c4312401434ead1575f061e9c0028fbac0ebbcf5 100644
+--- a/tests/test_mods.py
++++ b/tests/test_mods.py
+@@ -135,11 +135,21 @@ class ModTests(unittest.TestCase):
+         with self.assertRaises(ValueError):
+             mods.selected(self.moddir, config)
+ 
++    def test_restart_recreates_overlay_and_keeps_original_game_source(self):
++        self.run_overlay(restart=True)
++
+     def test_run_uses_overlay_propagates_exit_and_cleans_view(self):
++        self.run_overlay(restart=False)
++
++    def run_overlay(self, restart):
+         self.mod('A')
+         python = self.root / 'python'
+         python.write_text(f'#!{sys.executable}\nimport subprocess,sys\n'
+-            'if sys.argv[1] == "scripts/mods.py" or sys.argv[1] == "-c":\n'
++            'if sys.argv[1] == "scripts/game_check.py":\n'
++            "    print('{\"name\":\"ctr\",\"title\":\"CUSA13795\",\"version\":\"01.21\"}')\n"
++            'elif sys.argv[1] == "scripts/render_config.py":\n'
++            '    print("0\\t0\\tGame default")\n'
++            'elif sys.argv[1] == "scripts/mods.py" or sys.argv[1] == "-c":\n'
+             '    sys.exit(subprocess.call([sys.executable,*sys.argv[1:]]))\n')
+         python.chmod(0o755)
+         probe = self.root / 'probe'
+@@ -147,13 +157,17 @@ class ModTests(unittest.TestCase):
+             'game=Path(sys.argv[sys.argv.index("--app0")+1])\n'
+             'Path(os.environ["BB_DATA_DIR"],"mounted.json").write_text(json.dumps({\n'
+             '"path":str(game),"content":(game/"dvdroot_ps4/chr/a.dcx").read_text()}))\n'
+-            'sys.exit(7)\n')
++            'record=Path(os.environ["BB_DATA_DIR"],"launches")\n'
++            'n=int(record.read_text()) if record.exists() else 0\n'
++            'record.write_text(str(n+1))\n'
++            f'sys.exit(75 if {restart!r} and n == 0 else 7)\n')
+         probe.chmod(0o755)
+         env = dict(os.environ, BB_PREBUILT='1', BB_PROBE=str(probe), PYTHON=str(python),
+             BB_DATA_DIR=str(self.root), BB_GAME_DIR=str(self.game),
+             BB_MODS_DIR=str(self.moddir), BB_MODS_ENABLED='1', BB_MODS_CONFIG=str(self.root/'mods.json'))
+         result = subprocess.run(['bash', 'run.sh'], cwd=ROOT, env=env, capture_output=True, timeout=30)
+         self.assertEqual(result.returncode, 7, result.stderr)
++        self.assertEqual((self.root / 'launches').read_text(), '2' if restart else '1')
+         mounted = json.loads((self.root / 'mounted.json').read_text())
+         self.assertEqual(mounted['content'], 'mod')
+         self.assertFalse(Path(mounted['path']).exists())
+diff --git a/tests/test_native_update.py b/tests/test_native_update.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..861e55be051c23d6733f0162c1c41133844839ae
+--- /dev/null
++++ b/tests/test_native_update.py
+@@ -0,0 +1,73 @@
++"""Native release validation and explicit update checks, using synthetic responses."""
++import io
++import json
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++from types import SimpleNamespace
++import unittest
++from unittest.mock import patch
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT / 'launcher'))
++import native_update as update
++
++
++def release():
++    tag = 'arch-' + 'a' * 40
++    names = ['ctr-nitrofueled-0.r300.gaaaaaaaaaaaa-1-x86_64.pkg.tar.zst', 'install.sh', 'SHA256SUMS']
++    return {'tag_name': tag, 'draft': False, 'prerelease': False, 'assets': [
++        {'name': n, 'browser_download_url': f'https://github.com/{update.REPOSITORY}/releases/download/{tag}/{n}'}
++        for n in names]}
++
++
++class UpdateTests(unittest.TestCase):
++    def test_stable_release_has_verified_asset_locations(self):
++        self.assertEqual(update.release_info(release())['version'], '0.r300.gaaaaaaaaaaaa-1')
++
++    def test_incomplete_or_untrusted_releases_are_rejected(self):
++        for mutation in ('draft', 'prerelease', 'missing', 'foreign', 'duplicate', 'tag'):
++            with self.subTest(mutation=mutation):
++                data = release()
++                if mutation in ('draft', 'prerelease'):
++                    data[mutation] = True
++                elif mutation == 'missing':
++                    data['assets'].pop()
++                elif mutation == 'foreign':
++                    data['assets'][0]['browser_download_url'] = 'https://example.invalid/payload'
++                elif mutation == 'duplicate':
++                    data['assets'].append(data['assets'][0])
++                else:
++                    data['tag_name'] = 'unexpected'
++                with self.assertRaises(ValueError):
++                    update.release_info(data)
++
++    def test_check_compares_installed_version_and_does_not_send_local_metadata(self):
++        with tempfile.TemporaryDirectory() as folder:
++            (Path(folder) / 'build-info.json').write_text(json.dumps({'commit': 'b' * 40, 'package_version': '0.r263.gbbbbbbbbbbbb-1'}))
++            for comparison, expected in (('-1', True), ('0', False), ('1', False)):
++                with self.subTest(comparison=comparison), \
++                     patch.object(update.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(release()).encode())) as fetch, \
++                     patch.object(update.subprocess, 'run', return_value=SimpleNamespace(stdout=comparison)) as run:
++                    result = update.check(folder)
++                    self.assertEqual(result['update_available'], expected)
++                    request = fetch.call_args.args[0]
++                    self.assertEqual(request.full_url, update.API)
++                    self.assertIsNone(request.data)
++                    self.assertEqual(run.call_args.args[0][0], 'vercmp')
++
++    def test_check_failure_is_returned_to_the_ui(self):
++        with tempfile.TemporaryDirectory() as folder:
++            (Path(folder) / 'build-info.json').write_text(json.dumps({'commit': 'b' * 40, 'package_version': '1'}))
++            with patch.object(update.urllib.request, 'urlopen', side_effect=TimeoutError('offline')):
++                with self.assertRaises(TimeoutError):
++                    update.check(folder)
++
++    def test_installer_uses_an_existing_local_script_without_shell_interpolation(self):
++        with tempfile.TemporaryDirectory(prefix='installer space ') as folder:
++            with self.assertRaises(FileNotFoundError):
++                update.installer_command(folder)
++            (Path(folder) / 'install.sh').touch()
++            self.assertEqual(update.installer_command(folder),
++                             ['xdg-terminal-exec', '--', '/usr/bin/bash', str(Path(folder) / 'install.sh')])
+diff --git a/tests/test_patches.py b/tests/test_patches.py
+index f0a31fe583e404db10768c767d3f905dbc59cc49..26030f9171dd7ad7ce328575b67431dcf8517981 100644
+--- a/tests/test_patches.py
++++ b/tests/test_patches.py
+@@ -194,5 +194,26 @@ class GamePatchTests(unittest.TestCase):
+             self.assertEqual(read_settings(Path(tmp) / 'missing.ini'), {})
+ 
+ 
++
++class RegionalPatchTests(unittest.TestCase):
++    def test_bundled_signed_patches_are_selected_for_both_supported_editions(self):
++        for title in ('CUSA13795', 'CUSA14876'):
++            found = patches.external_patches(ROOT / 'patches', '01.21', title)
++            self.assertEqual(len(found), 3)
++            for _key, _path, metadata in found:
++                self.assertTrue(all(line.get('Signature') for line in metadata.iter('Line')))
++        self.assertEqual(patches.external_patches(ROOT / 'patches', '01.21', 'CUSA00000'), [])
++
++
++
++
++class PatchCatalogTests(unittest.TestCase):
++    def test_user_directory_keeps_bundled_patches_and_filters_editions(self):
++        with tempfile.TemporaryDirectory() as folder:
++            found = patches.available_patches(Path(folder), '01.21', 'CUSA14876')
++            self.assertEqual({key for key, _, _ in found}, set(patches.GAME_PATCH_KEYS.values()))
++            self.assertEqual(patches.available_patches(Path(folder), '01.21', 'CUSA00000'), [])
++
++
+ if __name__ == '__main__':
+     unittest.main()
+diff --git a/tests/test_settings.cpp b/tests/test_settings.cpp
+index d895560f41ed2c6a96bfe4d192cef588840c993e..8c948b51b2c405a7f89bdf871679ce6137bafc74 100644
+--- a/tests/test_settings.cpp
++++ b/tests/test_settings.cpp
+@@ -28,7 +28,8 @@ int main() {
+ 
+     BbSettings::Load();
+     auto& s = BbSettings::Get();
+-    assert(s.upscaler == BbSettings::UpscalerFsr3 && !s.show_fps && s.menu_x < 0.0f);
++    // CTR intentionally disables bbport's Bloodborne-specific upscaler on load.
++    assert(s.upscaler == BbSettings::UpscalerOff && !s.show_fps && s.menu_x < 0.0f);
+     s.show_fps = true;
+     s.upscaler = BbSettings::UpscalerFsr411;
+     s.menu_x = 0.625f;
+@@ -46,7 +47,22 @@ int main() {
+     s.menu_x = -1.0f;
+     s.menu_y = -1.0f;
+     BbSettings::Load();
+-    assert(s.menu_x == 0.625f && s.menu_y == 0.125f && s.upscaler == BbSettings::UpscalerFsr411);
++    assert(s.menu_x == 0.625f && s.menu_y == 0.125f && s.upscaler == BbSettings::UpscalerOff);
++    // An explicit windowed launch overrides persisted fullscreen; toggles persist both ways.
++    s.fullscreen = true;
++    BbSettings::Save();
++    setenv("BB_FULLSCREEN", "0", 1);
++    BbSettings::Load();
++    assert(!s.fullscreen);
++    setenv("BB_FULLSCREEN", "1", 1);
++    BbSettings::Load();
++    assert(s.fullscreen);
++    unsetenv("BB_FULLSCREEN");
++    s.fullscreen = false;
++    BbSettings::Save();
++    BbSettings::Load();
++    assert(!s.fullscreen);
++    assert(Read(path).find("fullscreen=0\n") != std::string::npos);
+     unlink(path);
+     std::puts("PASS: settings save keeps other keys, menu position");
+ }

@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/GetLostIn/CTR-NitroFueled-PC.git",
+  "branch": "main",
+  "patch_base": "46c810b2a30451873034e5b17c8a61ddd780618f"
+}

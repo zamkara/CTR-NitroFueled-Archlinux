@@ -1,0 +1,5 @@
+# Reproducible, disposable build workspaces and artifacts.
+/workflows/.build/
+__pycache__/
+*.py[cod]
+*.pkg.tar.*

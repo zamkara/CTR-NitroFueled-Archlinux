@@ -8,7 +8,7 @@ This fork produces Arch packages; upstream remains responsible for its Windows d
 
 No game files are included. You need your own decrypted base game and **1.21 update**.
 This fork recognizes upstream CUSA13795 and the verified CUSA14876 1.21 executable.
-CUSA14876 support is experimental; see [regional validation and limits](docs/CUSA14876.md).
+CUSA14876 support is experimental; see [regional validation and limits](.github/workflows/ctr/docs/CUSA14876.md).
 Other executable builds remain unvalidated. Requires an x86_64 CPU with AVX and a Vulkan 1.3 GPU driver.
 
 ## Install or update
@@ -62,7 +62,7 @@ two counters. Settings also apply to the direct-play shortcut.
 
 The expanded launcher includes graphics, frame limits, monitor/window mode, per-player
 controllers, save management, DLC and additional XML patches. Details and honest limits:
-[Linux features and validation](docs/FEATURES.md).
+[Linux features and validation](.github/workflows/ctr/docs/FEATURES.md).
 
 ## Prepare your game
 
@@ -85,17 +85,21 @@ Remove with `sudo pacman -Rns ctr-nitrofueled`. User saves and settings are pres
 
 ## Build and release
 
-The scheduled daily workflow, manual runs and pushes to `main` fetch and merge
-upstream before building. Source history is preserved. This fork's packaging, workflows and README
-are protected; source conflicts stop synchronization for review instead of discarding either side.
-An already published source hash skips the build. Every published release uses `arch-<full commit>`
-and contains the package, PKGBUILD, SRCINFO, installer and SHA256SUMS. Releases become public,
-non-draft and non-prerelease only after the clean Arch smoke test passes.
+This is a thin native packaging repository. The root contains only this README,
+LICENSE and .github. Build policy, documentation, regression tests and the reviewed
+native feature patches live in [.github/workflows/ctr](.github/workflows/ctr).
 
-Build manually with `makepkg -s` from `packaging/arch`. Set `CTR_COMMIT` to a published full source
-commit. Build dependencies and renderer submodules are pinned to that source; the VMA header is
-versioned and checksummed. Build and smoke jobs run in disposable Arch containers, not on the host.
-Native C/runtime and Python tests run before packaging; the smoke test installs, opens the launcher
-as an unprivileged user, checks shared libraries and removes the package while preserving user data.
+Daily, manual and main-branch builds fetch a pinned upstream revision, apply the
+native feature patch queue, build in a disposable Arch container, run native tests
+and validate installation, launcher startup and removal before publication. Patch
+conflicts stop the build for review. An unchanged complete release is skipped.
+No Windows or AppImage releases are produced by this repository.
 
-See [upstream synchronization policy](docs/UPSTREAM.md).
+Release tags use a digest of the upstream and native policy commits. Both exact
+revisions are recorded in the checksummed upstream.json asset. Published PKGBUILD
+and SRCINFO pin their sources so packages can be reproduced independently.
+Existing installer commands and updater clients remain compatible.
+
+Developer commands and the source-update policy are documented in the
+[build helpers](.github/workflows/ctr/README.md) and
+[synchronization policy](.github/workflows/ctr/docs/UPSTREAM.md).
