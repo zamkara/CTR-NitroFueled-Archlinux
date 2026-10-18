@@ -88,7 +88,7 @@ PYBUILD
     install -Dm755 "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled" "$pkgdir/usr/bin/ctr-nitrofueled"
     install -Dm644 "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled.desktop" "$pkgdir/usr/share/applications/ctr-nitrofueled.desktop"
     install -Dm644 "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled-play.desktop" "$pkgdir/usr/share/applications/ctr-nitrofueled-play.desktop"
-    install -Dm644 docs/images/logo.png "$pkgdir/usr/share/pixmaps/ctr-nitrofueled.png"
+    install -Dm644 launcher/assets/app-icon.png "$pkgdir/usr/share/pixmaps/ctr-nitrofueled.png"
     install -Dm644 "$srcdir/vk_mem_alloc.h" "$pkgdir/usr/share/licenses/ctr-nitrofueled/VulkanMemoryAllocator-header"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ctr-nitrofueled/LICENSE"
     for component in gpu/third_party/fonts gpu/third_party/fsr-vulkan gpu/third_party/imgui third_party/LibAtrac9 gpu/third_party/magic_enum gpu/third_party/miniz gpu/third_party/xbyak; do

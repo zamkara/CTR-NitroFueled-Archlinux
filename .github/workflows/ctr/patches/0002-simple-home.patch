@@ -1,0 +1,235 @@
+diff --git c/launcher/sacredfire_launcher.py w/launcher/sacredfire_launcher.py
+index f7839126a991ddc38dafbaecedbdd17faeae6a9f..37f652647708db1f5b2da3ffdc30c553444bf959 100644
+--- c/launcher/sacredfire_launcher.py
++++ w/launcher/sacredfire_launcher.py
+@@ -27,7 +27,7 @@ import gi
+ 
+ gi.require_version("Gtk", "4.0")
+ gi.require_version("Adw", "1")
+-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
++from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
+ 
+ PORT_DIR = Path(__file__).resolve().parent.parent
+ sys.path.insert(0, str(PORT_DIR / "scripts"))
+@@ -250,11 +250,9 @@ ISSUE2_URL = "https://github.com/T3CHNOLOG1C/SacredFire/issues/2"
+ 
+ 
+ def install_game_icon(game_dir):
+-    """The game's own icon (sce_sys/icon0.png) as this app's icon: copied into the user's icon
+-    theme under the application id, where GTK and the desktop find it (launcher/install-desktop.sh
+-    does the same for the menu entry). Game files never enter the repository."""
++    """Install the supplied application icon in the user icon theme."""
+     try:
+-        source = Path(game_dir).expanduser() / "sce_sys/icon0.png"
++        source = PORT_DIR / "launcher/assets/app-icon.png"
+         if not source.is_file():
+             return False
+         share = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+@@ -272,7 +270,7 @@ class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
+         super().__init__(application=app, title=f"{TITLE} {port_version()}".rstrip())
+         if install_game_icon(self.settings["game_dir"] if hasattr(self, "settings") else load_settings()["game_dir"]):
+             self.set_icon_name(APP_ID)
+-        self.set_default_size(720, 760)
++        self.set_default_size(800, 600)
+         self.settings = load_settings()
+         set_language(self.settings.get("ui_language", ""))
+         self.ini, self.ini_lines = load_ini()
+@@ -290,16 +288,34 @@ class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
+         toolbar = Adw.ToolbarView()
+         header = Adw.HeaderBar()
+         self.stack = Adw.ViewStack()
+-        switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE)
+-        header.set_title_widget(switcher)
++        self.page_title = Gtk.Label()
++        header.set_title_widget(self.page_title)
++        self.back_button = Gtk.Button(icon_name="go-previous-symbolic", tooltip_text="Home")
++        self.back_button.connect("clicked", lambda _button: self.show_page("home"))
++        header.pack_start(self.back_button)
++        menu = Gio.Menu()
++        for name, label, icon in (("home", "Home", "go-home-symbolic"),
++                                  ("settings", "Settings", "preferences-system-symbolic"),
++                                  ("controls", "Controls", "input-gaming-symbolic"),
++                                  ("library", "Library", "folder-symbolic"),
++                                  ("log", "Log", "utilities-terminal-symbolic")):
++            item = Gio.MenuItem.new(label, None)
++            item.set_icon(Gio.ThemedIcon.new(icon))
++            item.set_action_and_target_value("win.page", GLib.Variant("s", name))
++            menu.append_item(item)
++        action = Gio.SimpleAction.new("page", GLib.VariantType.new("s"))
++        action.connect("activate", lambda _action, target: self.show_page(target.get_string()))
++        self.add_action(action)
++        header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu,
++                                       tooltip_text="Menu"))
+         self.launch_button = Gtk.Button()
+         self.launch_button.connect("clicked", self.on_launch)
+-        header.pack_end(self.launch_button)
+         toolbar.add_top_bar(header)
+         self.toasts = Adw.ToastOverlay()
+         self.toasts.set_child(self.stack)
+         toolbar.set_content(self.toasts)
+         self.set_content(toolbar)
++        self.stack.add_titled(self.build_home_page(), "home", "Home")
+         self.stack.add_titled_with_icon(self.build_settings_page(), "settings", tr("Settings"),
+                                         "preferences-system-symbolic")
+         self.stack.add_titled_with_icon(self.build_controls_page(), "controls", tr("Controls"),
+@@ -307,12 +323,54 @@ class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
+         self.stack.add_titled_with_icon(self.build_library_page(), "library", "Library", "folder-symbolic")
+         self.stack.add_titled_with_icon(self.build_log_page(), "log", tr("Log"),
+                                         "utilities-terminal-symbolic")
++        self.show_page("home")
+         self.update_launch_button()
+         self.update_game_status()
+ 
++    def show_page(self, name):
++        self.stack.set_visible_child_name(name)
++        self.back_button.set_visible(name != "home")
++        self.page_title.set_label("" if name == "home" else name.title())
++
++    def build_home_page(self):
++        home = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
++                       margin_start=32, margin_end=32, margin_top=16, margin_bottom=32)
++        logo = Gtk.Picture()
++        def refresh_logo(*_args):
++            variant = "dark" if Adw.StyleManager.get_default().get_dark() else "light"
++            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
++                str(PORT_DIR / f"launcher/assets/ic_home_{variant}.png"), 360, 210, True)
++            logo.set_paintable(Gdk.Texture.new_for_pixbuf(pixbuf))
++        refresh_logo()
++        Adw.StyleManager.get_default().connect("notify::dark", refresh_logo)
++        logo.set_content_fit(Gtk.ContentFit.CONTAIN)
++        logo.set_can_shrink(True)
++        logo.set_halign(Gtk.Align.CENTER)
++        logo.set_valign(Gtk.Align.CENTER)
++        logo.set_accessible_role(Gtk.AccessibleRole.IMG)
++        logo.update_property([Gtk.AccessibleProperty.LABEL], ["Crash Team Racing Nitro-Fueled"])
++        artwork = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
++                          valign=Gtk.Align.CENTER, vexpand=True)
++        artwork.append(logo)
++        home.append(artwork)
++        buttons = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
++        self.launch_button.add_css_class("pill")
++        self.launch_button.set_size_request(180, -1)
++        buttons.append(self.launch_button)
++        settings = Gtk.Button(icon_name="preferences-system-symbolic", tooltip_text="Settings")
++        settings.add_css_class("pill")
++        settings.connect("clicked", lambda _button: self.show_page("settings"))
++        buttons.append(settings)
++        home.append(buttons)
++        return home
++
+     def update_launch_button(self):
+         running = self.process is not None
+-        self.launch_button.set_label(tr("Stop") if running else tr("Play"))
++        content = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
++        content.append(Gtk.Image.new_from_icon_name(
++            "media-playback-stop-symbolic" if running else "media-playback-start-symbolic"))
++        content.append(Gtk.Label(label=tr("Stop") if running else tr("Play")))
++        self.launch_button.set_child(content)
+         self.launch_button.remove_css_class("destructive-action" if not running else "suggested-action")
+         self.launch_button.add_css_class("destructive-action" if running else "suggested-action")
+ 
+@@ -852,10 +910,12 @@ class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
+             self.toasts.add_toast(Adw.Toast(title=tr("No Steam user folder found (userdata)"), timeout=6))
+             return
+         exe, start_dir, options = steam_shortcuts.launcher_command()
+-        entry = steam_shortcuts.make_entry(exe, start_dir, launch_options=options)
++        entry = steam_shortcuts.make_entry(exe, start_dir, launch_options=options,
++                                           icon=str(PORT_DIR / "launcher/assets/app-icon.png"))
+         added = replaced = 0
+         for path in files:
+             try:
++                steam_shortcuts.install_artwork(path, entry, PORT_DIR / "launcher/assets")
+                 if steam_shortcuts.add_shortcut(path, entry):
+                     added += 1
+                 else:
+@@ -900,7 +960,7 @@ class LauncherWindow(LibraryMixin, Adw.ApplicationWindow):
+         self.update_launch_button()
+         self.stack.get_child_by_name("settings").set_sensitive(False)
+         self.stack.get_child_by_name("controls").set_sensitive(False)
+-        self.stack.set_visible_child_name("log")
++        self.show_page("home")
+ 
+     def read_line(self):
+         self.stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self.on_line)
+diff --git c/launcher/steam_shortcuts.py w/launcher/steam_shortcuts.py
+index e3887f9c5287d119ffba6cd037258520b60ceb4c..5a3a892377bfe5f145659012f9f51bc963e96663 100644
+--- c/launcher/steam_shortcuts.py
++++ w/launcher/steam_shortcuts.py
+@@ -7,6 +7,7 @@ ended by 0x08). The app id of a shortcut is the CRC32 of its executable and name
+ set, as Steam computes it (the same id names its grid artwork).
+ """
+ import os
++import shutil
+ import struct
+ import subprocess
+ import zlib
+@@ -167,3 +168,24 @@ def launcher_command():
+     else:
+         exe = str((Path(__file__).resolve().parent / "bb-launcher.sh"))
+     return exe, str(Path(exe).parent), "--play"
++
++
++def install_artwork(shortcuts_path, entry, assets):
++    """Install supplied artwork, preserving the previous image once before replacement."""
++    grid = Path(shortcuts_path).parent / "grid"
++    grid.mkdir(parents=True, exist_ok=True)
++    appid = entry["appid"] & 0xFFFFFFFF
++    for suffix, name in (("p", "ic_grid.png"), ("_hero", "ic_heroes.png"),
++                         ("_logo", "ic_logo.png")):
++        source = Path(assets) / name
++        target = grid / f"{appid}{suffix}.png"
++        if not source.is_file():
++            continue
++        if target.exists() and target.read_bytes() == source.read_bytes():
++            continue
++        backup = target.with_suffix(".png.bak")
++        if target.exists() and not backup.exists():
++            shutil.copy2(target, backup)
++        temporary = target.with_suffix(".png.tmp")
++        shutil.copy2(source, temporary)
++        os.replace(temporary, target)
+diff --git c/tests/test_launcher_features.py w/tests/test_launcher_features.py
+index e843ff5ae0c92c2fb947085e1b5a7bbd26a9098a..231160795daac3093afa4b674e6752b79299f98e 100644
+--- c/tests/test_launcher_features.py
++++ w/tests/test_launcher_features.py
+@@ -41,6 +41,14 @@ class LauncherFeatureTests(unittest.TestCase):
+         self.window.present()
+         self.drain()
+ 
++    def test_home_navigation_and_icon_play_button(self):
++        self.assertEqual(self.window.stack.get_visible_child_name(), "home")
++        self.assertIsInstance(self.window.launch_button.get_child(), Gtk.Box)
++        for name in ("settings", "controls", "library", "log", "home"):
++            self.window.show_page(name)
++            self.assertEqual(self.window.stack.get_visible_child_name(), name)
++            self.assertEqual(self.window.back_button.get_visible(), name != "home")
++
+     def drain(self, duration=0.1):
+         end = time.monotonic() + duration
+         context = GLib.MainContext.default()
+diff --git c/tests/test_steam_shortcuts.py w/tests/test_steam_shortcuts.py
+index 72940d041e08132f156a9919b3912115f4e27f88..7f609e38b21bf812a7d57d1082997810f325caa3 100644
+--- c/tests/test_steam_shortcuts.py
++++ w/tests/test_steam_shortcuts.py
+@@ -14,6 +14,21 @@ import steam_shortcuts as ss  # noqa: E402
+ 
+ 
+ class SteamShortcuts(unittest.TestCase):
++    def test_artwork_is_installed_and_previous_images_preserved(self):
++        with tempfile.TemporaryDirectory() as folder:
++            path = Path(folder) / "config/shortcuts.vdf"
++            entry = ss.make_entry("/usr/bin/ctr-nitrofueled", "/usr/bin")
++            assets = ROOT / "launcher/assets"
++            ss.install_artwork(path, entry, assets)
++            images = list((path.parent / "grid").glob("*.png"))
++            self.assertEqual(len(images), 3)
++            target = images[0]
++            target.write_bytes(b"previous")
++            ss.install_artwork(path, entry, assets)
++            self.assertEqual(target.with_suffix(".png.bak").read_bytes(), b"previous")
++            ss.install_artwork(path, entry, assets)
++            self.assertEqual(target.with_suffix(".png.bak").read_bytes(), b"previous")
++
+     def test_round_trip(self):
+         top = {"shortcuts": {"0": ss.make_entry("/games/a.AppImage", "/games", name="A", launch_options="--play")}}
+         data = ss.serialize(top)

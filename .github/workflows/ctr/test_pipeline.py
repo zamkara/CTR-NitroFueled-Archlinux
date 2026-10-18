@@ -48,7 +48,7 @@ class PipelineTests(unittest.TestCase):
             (source/('feature.c' if conflict else 'fix.c')).write_text('upstream\n')
             git('add','.');git('commit','-m','upstream');head=git('rev-parse','HEAD')
             policy=root/'policy';helpers=policy/'.github/workflows/ctr'
-            for name in ('patches','arch','docs'):(helpers/name).mkdir(parents=True)
+            for name in ('patches','arch','docs','assets'):(helpers/name).mkdir(parents=True)
             (helpers/'patches/0001.patch').write_text(patch)
             (helpers/'upstream.json').write_text(json.dumps({'patch_base':base,'repository':str(source)}))
             (helpers/'test_arch_packaging.py').write_text('# fixture\n')

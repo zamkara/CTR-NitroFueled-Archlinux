@@ -32,6 +32,7 @@ def apply(source, policy):
         run(source,'reset','--hard',original)
         raise RuntimeError('Native patches conflict with upstream; review required. '+error.stderr) from error
     # Build-only policy overlay: no upstream workflows or foreign releases are executed.
+    shutil.copytree(helpers/'assets',source/'launcher/assets',dirs_exist_ok=True)
     shutil.copytree(helpers/'arch',source/'packaging/arch',dirs_exist_ok=True)
     shutil.copy2(helpers/'test_arch_packaging.py',source/'tests/test_arch_packaging.py')
     shutil.copytree(policy/'.github',source/'.github',dirs_exist_ok=True,
