@@ -15,7 +15,8 @@ optdepends=('vulkan-driver: Vulkan 1.3 capable GPU driver'
             'vulkan-tools: GPU diagnostics' 'gamemode: game performance management'
             'mangohud: performance overlay')
 options=('!lto' '!debug')
-_commit=${CTR_COMMIT:-9b0338ce31a8c5ca56aff6f44209729a3a6ca238}
+# Local builds use the checked-out commit; CI replaces this line with a literal release pin.
+_commit=${CTR_COMMIT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse HEAD)}
 [[ $_commit =~ ^[0-9a-f]{40}$ ]] || return 1
 source=("ctr-nitrofueled-source::git+https://github.com/zamkara/CTR-NitroFueled.git#commit=$_commit"
         'vk_mem_alloc.h::https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/v3.3.0/include/vk_mem_alloc.h')
