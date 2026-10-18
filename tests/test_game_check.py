@@ -104,5 +104,37 @@ class GameCheckTests(unittest.TestCase):
             self.assertIn('CUSA', game_check.explain(kind, 'CUSA00000', '01.00'))
 
 
+
+    def test_verified_cusa14876_update_is_recognized(self):
+        game = self.game('CUSA14876', '01.21')
+        with mock.patch.object(game_check, 'image_sha256', return_value=game_check.EU_IMAGE):
+            self.assertIsNone(game_check.problem(game))
+            profile = game_check.profile(game)
+            self.assertEqual(profile['title'], 'CUSA14876')
+            self.assertEqual(profile['name'], 'ctr')
+            self.assertEqual(profile['variant'], 'validated-1.21')
+
+    def test_unknown_cusa14876_executable_does_not_pass_by_metadata_alone(self):
+        game = self.game('CUSA14876', '01.21')
+        self.assertEqual(game_check.problem(game)[0], 'unrecognized_build')
+        self.assertIsNone(game_check.profile(game))
+
+    def test_cusa14876_base_requires_the_update(self):
+        game = self.game('CUSA14876', '01.00')
+        with mock.patch.object(game_check, 'image_sha256', return_value=game_check.EU_BASE_IMAGE):
+            self.assertEqual(game_check.problem(game)[0], 'missing_update')
+        game = self.game('CUSA14876', '01.21')
+        with mock.patch.object(game_check, 'image_sha256', return_value=game_check.EU_BASE_IMAGE):
+            self.assertEqual(game_check.problem(game)[0], 'wrong_eboot')
+
+    def test_known_executable_must_match_the_edition_metadata(self):
+        for title, image in (('CUSA13795', game_check.EU_IMAGE), ('CUSA14876', game_check.SUPPORTED_IMAGE)):
+            with self.subTest(title=title):
+                game = self.game(title, '01.21')
+                with mock.patch.object(game_check, 'image_sha256', return_value=image):
+                    self.assertEqual(game_check.problem(game)[0], 'identity_mismatch')
+                    self.assertIsNone(game_check.profile(game))
+
+
 if __name__ == '__main__':
     unittest.main()

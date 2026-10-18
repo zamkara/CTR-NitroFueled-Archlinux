@@ -56,6 +56,22 @@ class LauncherFeatureTests(unittest.TestCase):
             self.drain(0.02)
         self.assertTrue(self.window.update_button.get_sensitive())
 
+    def test_statistics_persist_and_apply_to_direct_play(self):
+        self.window.mangohud_row.set_active(True)
+        self.window.stats_interval_row.set_selected(1)
+        self.window.store()
+        saved = launcher.load_settings()
+        self.assertTrue(saved['mangohud'])
+        self.assertEqual(saved['stats_interval'], '2000')
+        with patch.dict(os.environ, {}, clear=True):
+            env = launcher.game_environment(saved)
+        self.assertEqual(env['MANGOHUD'], '1')
+        self.assertIn('fps_sampling_period=2000', env['MANGOHUD_CONFIG'])
+        for metric in ('fps', 'frametime', 'cpu_stats', 'gpu_stats', 'vram', 'ram'):
+            self.assertIn(metric, env['MANGOHUD_CONFIG'].split(','))
+        with patch.dict(os.environ, {'MANGOHUD_CONFIG': 'fps_only'}, clear=True):
+            self.assertEqual(launcher.game_environment(saved)['MANGOHUD_CONFIG'], 'fps_only')
+
     def dropdowns(self, widget):
         result = [widget] if isinstance(widget, Gtk.DropDown) else []
         child = widget.get_first_child()

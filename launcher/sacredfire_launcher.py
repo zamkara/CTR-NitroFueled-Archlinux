@@ -87,6 +87,7 @@ DEFAULTS = {
     "frame_stats": False,
     "save_log": False,
     "mangohud": False,
+    "stats_interval": "1000",
     "vk_validation": False,
     "extra_env": "",
 }
@@ -166,6 +167,12 @@ def game_environment(s):
         env["BB_SAVE_LOG"] = "1"
     if s["mangohud"]:
         env["MANGOHUD"] = "1"
+        interval = s.get("stats_interval", "1000")
+        if interval not in ("1000", "2000"):
+            interval = "1000"
+        env.setdefault("MANGOHUD_CONFIG",
+                       "fps,frametime,frame_timing,cpu_stats,gpu_stats,vram,ram,resolution,"
+                       f"fps_sampling_period={interval}")
     if s["vk_validation"]:
         env["BB_VK_VALIDATION"] = "1"
     for item in s["extra_env"].split():
@@ -288,7 +295,7 @@ class LauncherWindow(Adw.ApplicationWindow):
 
         game = Adw.PreferencesGroup(title=tr("Game"),
                                     description=tr("The dumped game with its 1.21 update merged over the base (eboot.bin, sce_module, ...)"))
-        self.game_row = Adw.ActionRow(title=tr("Game folder (CUSA13795)"))
+        self.game_row = Adw.ActionRow(title=tr("Game folder"))
         self.game_status = Gtk.Image(valign=Gtk.Align.CENTER)
         self.game_row.add_suffix(self.game_status)
         self.game_row.add_suffix(flat_button("folder-open-symbolic", tr("Choose the folder with eboot.bin"), self.on_choose_game))
@@ -340,9 +347,17 @@ class LauncherWindow(Adw.ApplicationWindow):
         screen.add(self.fps_row)
         page.add(screen)
 
+        statistics = Adw.PreferencesGroup(title="Performance statistics")
+        self.mangohud_row = Adw.SwitchRow(title="Performance overlay",
+            subtitle="FPS, frame time, CPU, GPU, video memory, RAM and resolution via MangoHud",
+            active=self.settings["mangohud"])
+        statistics.add(self.mangohud_row)
+        self.stats_interval_row = combo_row("FPS sampling interval", None,
+            [("1 second", "1000"), ("2 seconds", "2000")], self.settings["stats_interval"])
+        statistics.add(self.stats_interval_row)
+        page.add(statistics)
+
         dev = Adw.PreferencesGroup(title=tr("Developer"))
-        self.mangohud_row = Adw.SwitchRow(title="MangoHud", active=self.settings["mangohud"])
-        dev.add(self.mangohud_row)
         self.stats_row = Adw.SwitchRow(title=tr("Frame statistics in the log"), active=self.settings["frame_stats"])
         dev.add(self.stats_row)
         self.save_log_row = Adw.SwitchRow(title=tr("Save the log to a file (logs/)"), active=self.settings["save_log"])
@@ -412,7 +427,7 @@ class LauncherWindow(Adw.ApplicationWindow):
             problem = ("other_title", profile["title"], profile["version"])
             self.game_row.set_subtitle(f"{path}\n{tooltip}")
         else:
-            tooltip = f"{GAME} CUSA13795, 1.21"
+            tooltip = f"{GAME} {profile['title']}, {profile['version']}"
         self.game_status.set_from_icon_name("object-select-symbolic" if ok and not problem else "dialog-warning-symbolic")
         self.game_status.set_tooltip_text(tooltip)
         self.launch_button.set_sensitive((ok and not problem) or self.process is not None)
@@ -459,6 +474,7 @@ class LauncherWindow(Adw.ApplicationWindow):
         s["fullscreen"] = self.fullscreen_row.get_active()
         s["present_mode"] = combo_value(self.present_row)
         s["mangohud"] = self.mangohud_row.get_active()
+        s["stats_interval"] = combo_value(self.stats_interval_row)
         s["frame_stats"] = self.stats_row.get_active()
         s["save_log"] = self.save_log_row.get_active()
         s["clear_shader_cache"] = self.cache_row.get_active()

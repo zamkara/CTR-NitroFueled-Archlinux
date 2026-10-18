@@ -194,5 +194,16 @@ class GamePatchTests(unittest.TestCase):
             self.assertEqual(read_settings(Path(tmp) / 'missing.ini'), {})
 
 
+
+class RegionalPatchTests(unittest.TestCase):
+    def test_bundled_signed_patches_are_selected_for_both_supported_editions(self):
+        for title in ('CUSA13795', 'CUSA14876'):
+            found = patches.external_patches(ROOT / 'patches', '01.21', title)
+            self.assertEqual(len(found), 3)
+            for _key, _path, metadata in found:
+                self.assertTrue(all(line.get('Signature') for line in metadata.iter('Line')))
+        self.assertEqual(patches.external_patches(ROOT / 'patches', '01.21', 'CUSA00000'), [])
+
+
 if __name__ == '__main__':
     unittest.main()

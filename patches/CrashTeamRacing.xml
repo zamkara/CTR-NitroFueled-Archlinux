@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Crash Team Racing Nitro-Fueled (CUSA13795) 1.21 patches, from
+<!-- Crash Team Racing Nitro-Fueled (CUSA13795 / CUSA14876) 1.21 patches, from
      https://github.com/illusionyy/PS-Game-Patch (patches/xml/CrashTeamRacingUS-Orbis.xml),
      authors illusion and TroyWarez. Selected in the in-game menu (bbport.ini patch_* keys),
      compiled by scripts/patches.py into out/patches.bin at start.
@@ -13,6 +13,7 @@
 <Patch>
     <TitleID>
         <ID>CUSA13795</ID>
+        <ID>CUSA14876</ID>
     </TitleID>
     <Metadata Title="Crash Team Racing Nitro-Fueled"
               Name="60 FPS Unlock"

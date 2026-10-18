@@ -5,8 +5,10 @@ Based on [GetLostIn/CTR-NitroFueled-PC](https://github.com/GetLostIn/CTR-NitroFu
 which derives from [SacredFire](https://github.com/T3CHNOLOG1C/SacredFire), bbport and shadPS4.
 This fork produces Arch packages; upstream remains responsible for its Windows distribution.
 
-No game files are included. You need your own decrypted **CUSA13795** base game and **1.21 update**.
-Other regions are not supported by upstream. Requires an x86_64 CPU with AVX and a Vulkan 1.3 GPU driver.
+No game files are included. You need your own decrypted base game and **1.21 update**.
+This fork recognizes upstream CUSA13795 and the verified CUSA14876 1.21 executable.
+CUSA14876 support is experimental; see [regional validation and limits](docs/CUSA14876.md).
+Other executable builds remain unvalidated. Requires an x86_64 CPU with AVX and a Vulkan 1.3 GPU driver.
 
 ## Install or update
 
@@ -49,6 +51,13 @@ to physical key positions. Empty selections unbind an action. Keyboard and contr
 have independent reset actions; analog sticks retain their native axes. Mappings are saved to
 the same `bbport.ini` used by direct play and apply on the next game launch. Controller mapping
 uses SDL button names rather than controller-specific branding.
+
+The launcher's **Performance statistics** group enables a MangoHud overlay with FPS,
+frame time, CPU/GPU utilization, video memory, RAM and resolution. FPS sampling can be
+set to one or two seconds. MangoHud is installed with the native package. Existing
+`MANGOHUD_CONFIG` settings and explicit environment overrides take precedence.
+The lightweight built-in FPS counter remains a separate option; enabling both produces
+two counters. Settings also apply to the direct-play shortcut.
 
 ## Prepare your game
 

@@ -7,13 +7,12 @@ arch=('x86_64')
 url='https://github.com/zamkara/CTR-NitroFueled'
 license=('GPL-2.0-or-later' 'MIT' 'Bitstream-Vera' 'Arev')
 depends=('glibc' 'gcc-libs' 'vulkan-icd-loader' 'sdl3' 'ffmpeg' 'fmt' 'xxhash'
-         'zydis' 'libx11' 'python' 'python-gobject' 'gtk4' 'libadwaita' 'xdg-utils' 'xdg-terminal-exec')
+         'zydis' 'libx11' 'python' 'python-gobject' 'gtk4' 'libadwaita' 'xdg-utils' 'xdg-terminal-exec' 'mangohud')
 makedepends=('git' 'cmake' 'ninja' 'pkgconf' 'boost' 'robin-map' 'vulkan-headers'
              'glslang' 'spirv-tools')
 checkdepends=('xorg-server-xvfb' 'xorg-xauth' 'ttf-dejavu' 'desktop-file-utils' 'dbus')
 optdepends=('vulkan-driver: Vulkan 1.3 capable GPU driver'
-            'vulkan-tools: GPU diagnostics' 'gamemode: game performance management'
-            'mangohud: performance overlay')
+            'vulkan-tools: GPU diagnostics' 'gamemode: game performance management')
 options=('!lto' '!debug')
 # Local builds use the checked-out commit; CI replaces this line with a literal release pin.
 _commit=${CTR_COMMIT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse HEAD)}

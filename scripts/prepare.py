@@ -273,7 +273,7 @@ def prepare(game, out):
     if game_profile and game_profile.get('variant'):
         sdk = next((f.split('=', 1)[1] for f in str(report['sfo'].get('PUBTOOLINFO', '')).split(',')
                     if f.startswith('sdk_ver=')), '?')
-        print(f"Update build: {game_profile['version']} for firmware {game_profile['variant']} (param.sfo sdk_ver={sdk})"
+        print(f"Update build: {game_profile['title']} {game_profile['version']} ({game_profile['variant']}; sdk_ver={sdk})"
               + ('' if game_profile['variant'] == '5.05' else '; patch sites are found by signature'))
     print(f"{len(names)} imported symbols; {sum(counts.values()):,} relocations; {len(report['needed'])} required modules")
     if missing:

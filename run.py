@@ -11,6 +11,7 @@ previous process to end first.
 Works from the MSYS2 CLANG64 Python or a python.org Python.
 """
 import ctypes
+import json
 import os
 from pathlib import Path
 import shutil
@@ -176,12 +177,14 @@ def main():
             fail(f'{game} has the PS4 PKG Tool layout (Image0 and Sc0): prepare it in the launcher first.')
         fail(f'No eboot.bin in {game} (set BB_GAME_DIR to your {TITLE_ID} folder).')
     # The game check compares the executable image with the supported one (CTR NF 1.21).
-    check = subprocess.run([sys.executable, '-X', 'utf8', str(PORT / 'scripts' / 'game_check.py'), str(game)],
+    check = subprocess.run([sys.executable, '-X', 'utf8', str(PORT / 'scripts' / 'game_check.py'), str(game), '--json'],
                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            text=True, encoding='utf-8', errors='replace', creationflags=no_console())
     if check.returncode:
         fail(check.stdout.strip() or 'Game check failed.', 2)
-    env['BB_GAME_PROFILE'] = check.stdout.strip() or 'ctr'
+    profile = json.loads(check.stdout)
+    title_id, app_version = profile['title'], profile['version']
+    env['BB_GAME_PROFILE'] = profile['name']
     say(f'Game profile: {env["BB_GAME_PROFILE"]}')
 
     original_game = game.resolve()
@@ -205,7 +208,7 @@ def main():
         say(f'PS4 Pro mode: {env["BB_NEO"]} (BB_NEO=1 turns it on)')
         user_dir = Path(env.get('BB_USER_DIR', data / 'user')).resolve()
         if env.get('BB_CLEAR_SHADER_CACHE', '0') == '1':
-            shutil.rmtree(user_dir / 'cache' / TITLE_ID, ignore_errors=True)
+            shutil.rmtree(user_dir / 'cache' / title_id, ignore_errors=True)
             say('Shader cache: cleared for this launch (BB_CLEAR_SHADER_CACHE=1)')
         env.setdefault('BB_PREUPLOAD', '1')
         # The PC memory model (dma-buf guest memory) is Linux only: the 0.3 model on Windows.
@@ -241,7 +244,7 @@ def main():
             first = False
             run_python('scripts/patches.py', '--patches-dir', env.get('BB_PATCHES_DIR', 'patches'),
                        '--patches-config', env.get('BB_PATCHES_CONFIG', data / 'patches.json'),
-                       '--app-version', APP_VERSION, '--title-id', TITLE_ID, '--out', out,
+                       '--app-version', app_version, '--title-id', title_id, '--out', out,
                        '--settings', config)
             if user_vblank:
                 env['BB_VBLANK_HZ'] = user_vblank

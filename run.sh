@@ -50,9 +50,10 @@ if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1
 game=${BB_GAME_DIR:-orig/CUSA13795}
 if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set BB_GAME_DIR)." >&2; exit 1; fi
 # The game check (scripts/game_check.py) compares the executable image with the supported one
-# (Crash Team Racing Nitro-Fueled CUSA13795 1.21) and names the profile the runtime reads.
-profile=$("$PYTHON" scripts/game_check.py "$game") || { echo "$profile" >&2; exit 2; }
-export BB_GAME_PROFILE=${profile:-ctr}
+# (registered CTR 1.21 editions) and names the profile the runtime reads.
+profile_info=$("$PYTHON" scripts/game_check.py "$game" --json) || { echo "$profile_info" >&2; exit 2; }
+read -r profile title_id app_version < <("$PYTHON" -c 'import json,sys; p=json.load(sys.stdin); print(p["name"],p["title"],p["version"])' <<< "$profile_info")
+export BB_GAME_PROFILE=$profile
 echo "Game profile: $BB_GAME_PROFILE"
 original_game=$game
 game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \
@@ -68,14 +69,14 @@ fi
 "$PYTHON" scripts/link_modules.py "$game" --out "$out" --modules libc.prx libSceFios2.prx libSceNpToolkit2.prx
 # SacredFire: symbol names for this eboot's host-side imports (shadPS4's aerolib list, fetched once).
 "$PYTHON" tools/gen_import_names.py --out "$out"
-"$PYTHON" scripts/content_profile.py "$game" --out "$out" --sku "${BB_CONTENT_SKU:-full}"
+"$PYTHON" scripts/content_profile.py "$game" --out "$out" --sku "${BB_CONTENT_SKU:-full}" --dlc-dir "${BB_DLC_DIR:-$data/dlc}"
 # The game runs at its own 30 FPS against a 60 Hz vblank unless the 60 FPS patch is on. Patches
 # come from patches/CrashTeamRacing.xml (community patches by illusion and TroyWarez, from
 # https://github.com/illusionyy/PS-Game-Patch), chosen in the in-game menu (bbport.ini patch_*
 # keys) or patches.json; BB_PATCHES_DIR adds a folder of further shadPS4-format XML files.
 fps=${BB_FPS:-30}
 "$PYTHON" scripts/patches.py --patches-dir "${BB_PATCHES_DIR:-patches}" --patches-config "${BB_PATCHES_CONFIG:-$data/patches.json}" \
-    --app-version 01.21 --title-id CUSA13795 --out "$out" --settings "$BB_CONFIG"
+    --app-version "$app_version" --title-id "$title_id" --out "$out" --settings "$BB_CONFIG"
 patch_args=(--patches "$out/patches.bin")
 # BB_NEO=1: PS4 Pro mode (sceKernelIsNeoMode, 7-CPU mode, 5568 MiB direct memory); the game then
 # picks its Pro rendering path. Off by default: the Steam Deck is closer to a base PS4.
@@ -87,7 +88,7 @@ echo "PS4 Pro mode: ${BB_NEO} (BB_NEO=1 turns it on)"
 # deletes it first; the fur breakage that once forced a clear per launch is fixed
 # (docs/sacredfire/06-fur.md: geometry specialization and preload fetch shader).
 if [[ ${BB_CLEAR_SHADER_CACHE:-0} == 1 ]]; then
-    rm -rf "${BB_USER_DIR:-$data/user}/cache/CUSA13795"
+    rm -rf "${BB_USER_DIR:-$data/user}/cache/$title_id"
     echo "Shader cache: cleared for this launch (BB_CLEAR_SHADER_CACHE=1)"
 fi
 # With the 60 FPS patch the game's own limiter paces frames; a 60 Hz virtual vblank would
