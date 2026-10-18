@@ -50,6 +50,12 @@ class LauncherFeatureTests(unittest.TestCase):
             else:
                 time.sleep(0.002)
 
+    def wait_for_update(self):
+        deadline = time.monotonic() + 3
+        while not self.window.update_button.get_sensitive() and time.monotonic() < deadline:
+            self.drain(0.02)
+        self.assertTrue(self.window.update_button.get_sensitive())
+
     def dropdowns(self, widget):
         result = [widget] if isinstance(widget, Gtk.DropDown) else []
         child = widget.get_first_child()
@@ -90,14 +96,14 @@ class LauncherFeatureTests(unittest.TestCase):
         result = {'installed': '1', 'version': '2', 'update_available': True}
         with patch.object(launcher.native_update, 'check', return_value=result) as check:
             self.window.on_check_updates(None)
-            self.drain(0.25)
+            self.wait_for_update()
             check.assert_called_once_with(launcher.PORT_DIR)
         self.assertTrue(self.window.update_button.get_sensitive())
         self.assertTrue(self.window.install_update_button.get_visible())
         self.assertIn('Available: 2', self.window.update_row.get_subtitle())
         with patch.object(launcher.native_update, 'check', side_effect=TimeoutError('offline')):
             self.window.on_check_updates(None)
-            self.drain(0.25)
+            self.wait_for_update()
         self.assertFalse(self.window.install_update_button.get_visible())
         self.assertTrue(self.window.update_button.get_sensitive())
         self.assertIn('offline', self.window.update_row.get_subtitle())

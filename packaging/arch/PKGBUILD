@@ -53,7 +53,7 @@ check() {
     export BB_GPU_USER_DIR="$srcdir/test-user"
     install -d "$BB_GPU_USER_DIR"
     desktop-file-validate "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled.desktop" "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled-play.desktop"
-    dbus-run-session -- xvfb-run -a python -m unittest discover -s tests -p 'test_*.py'
+    dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo python -m unittest discover -s tests -p 'test_*.py'
 }
 
 package() {
