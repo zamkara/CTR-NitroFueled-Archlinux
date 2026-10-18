@@ -8,13 +8,13 @@ pacman -Syu --noconfirm --needed base-devel git cmake ninja pkgconf boost robin-
 useradd -m builder
 install -d -o builder -g builder /build
 mkdir -p /output
-cp /repo/packaging/arch/{PKGBUILD,ctr-nitrofueled,ctr-nitrofueled.desktop,ctr-nitrofueled-play.desktop} /build/
+cp /repo/packaging/arch/PKGBUILD /build/
 [[ $CTR_COMMIT =~ ^[0-9a-f]{40}$ ]]
 # Published recipes and SRCINFO must reproduce the exact release source, without CI env.
 sed -i "s/^_commit=.*/_commit=$CTR_COMMIT/" /build/PKGBUILD
 chown -R builder:builder /build
 # Git fetches only public source; credentials are never persisted in the container.
-runuser -u builder -- env CTR_COMMIT="$CTR_COMMIT" CTR_BUILD_JOBS=2 \
+runuser -u builder -- env CTR_COMMIT="$CTR_COMMIT" \
     bash -c 'cd /build && makepkg --cleanbuild --force --noconfirm'
 cp /build/*.pkg.tar.zst /output/
 cp /build/PKGBUILD /output/

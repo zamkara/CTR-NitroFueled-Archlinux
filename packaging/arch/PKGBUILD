@@ -51,7 +51,7 @@ check() {
     cd "$srcdir/ctr-nitrofueled-source"
     export BB_GPU_USER_DIR="$srcdir/test-user"
     install -d "$BB_GPU_USER_DIR"
-    desktop-file-validate "$startdir/ctr-nitrofueled.desktop" "$startdir/ctr-nitrofueled-play.desktop"
+    desktop-file-validate "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled.desktop" "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled-play.desktop"
     xvfb-run -a python -m unittest discover -s tests -p 'test_*.py'
 }
 
@@ -73,9 +73,9 @@ package() {
 import json,pathlib,sys
 pathlib.Path(sys.argv[1]).write_text(json.dumps({'package_version':sys.argv[2], 'commit':sys.argv[3]},indent=2)+'\n')
 PYBUILD
-    install -Dm755 "$startdir/ctr-nitrofueled" "$pkgdir/usr/bin/ctr-nitrofueled"
-    install -Dm644 "$startdir/ctr-nitrofueled.desktop" "$pkgdir/usr/share/applications/ctr-nitrofueled.desktop"
-    install -Dm644 "$startdir/ctr-nitrofueled-play.desktop" "$pkgdir/usr/share/applications/ctr-nitrofueled-play.desktop"
+    install -Dm755 "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled" "$pkgdir/usr/bin/ctr-nitrofueled"
+    install -Dm644 "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled.desktop" "$pkgdir/usr/share/applications/ctr-nitrofueled.desktop"
+    install -Dm644 "$srcdir/ctr-nitrofueled-source/packaging/arch/ctr-nitrofueled-play.desktop" "$pkgdir/usr/share/applications/ctr-nitrofueled-play.desktop"
     install -Dm644 docs/images/logo.png "$pkgdir/usr/share/pixmaps/ctr-nitrofueled.png"
     install -Dm644 "$srcdir/vk_mem_alloc.h" "$pkgdir/usr/share/licenses/ctr-nitrofueled/VulkanMemoryAllocator-header"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ctr-nitrofueled/LICENSE"

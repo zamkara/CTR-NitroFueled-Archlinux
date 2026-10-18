@@ -127,7 +127,7 @@ class NativeIntegrationTests(unittest.TestCase):
             root = Path(folder)
             source = root / 'src/ctr-nitrofueled-source'
             source.mkdir(parents=True)
-            for name in ('launcher', 'scripts', 'patches'):
+            for name in ('launcher', 'scripts', 'patches', 'packaging/arch'):
                 shutil.copytree(ROOT / name, source / name, ignore=shutil.ignore_patterns('__pycache__'))
             for name in ('run.sh', 'run.py', 'README.md', 'LICENSE', 'tools/merge_update.py',
                          'tools/gen_import_names.py', 'docs/images/logo.png'):
