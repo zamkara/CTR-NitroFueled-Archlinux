@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc='Crash Team Racing Nitro-Fueled native runtime and GTK launcher for Arch Linux'
 arch=('x86_64')
 url='https://github.com/zamkara/CTR-NitroFueled'
-license=('GPL-2.0-or-later' 'MIT')
+license=('GPL-2.0-or-later' 'MIT' 'Bitstream-Vera' 'Arev')
 depends=('glibc' 'gcc-libs' 'vulkan-icd-loader' 'sdl3' 'ffmpeg' 'fmt' 'xxhash'
          'zydis' 'libx11' 'python' 'python-gobject' 'gtk4' 'libadwaita' 'xdg-utils')
 makedepends=('git' 'cmake' 'ninja' 'pkgconf' 'boost' 'robin-map' 'vulkan-headers'
@@ -15,7 +15,7 @@ optdepends=('vulkan-driver: Vulkan 1.3 capable GPU driver'
             'vulkan-tools: GPU diagnostics' 'gamemode: game performance management'
             'mangohud: performance overlay')
 options=('!lto' '!debug')
-_commit=${CTR_COMMIT:-46c810b2a30451873034e5b17c8a61ddd780618f}
+_commit=${CTR_COMMIT:-9b0338ce31a8c5ca56aff6f44209729a3a6ca238}
 [[ $_commit =~ ^[0-9a-f]{40}$ ]] || return 1
 source=("ctr-nitrofueled-source::git+https://github.com/zamkara/CTR-NitroFueled.git#commit=$_commit"
         'vk_mem_alloc.h::https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/v3.3.0/include/vk_mem_alloc.h')
@@ -79,7 +79,7 @@ PYBUILD
     install -Dm644 docs/images/logo.png "$pkgdir/usr/share/pixmaps/ctr-nitrofueled.png"
     install -Dm644 "$srcdir/vk_mem_alloc.h" "$pkgdir/usr/share/licenses/ctr-nitrofueled/VulkanMemoryAllocator-header"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ctr-nitrofueled/LICENSE"
-    for component in gpu/third_party/fsr-vulkan gpu/third_party/imgui third_party/LibAtrac9 gpu/third_party/magic_enum gpu/third_party/miniz gpu/third_party/xbyak; do
+    for component in gpu/third_party/fonts gpu/third_party/fsr-vulkan gpu/third_party/imgui third_party/LibAtrac9 gpu/third_party/magic_enum gpu/third_party/miniz gpu/third_party/xbyak; do
         for file in "$component"/LICENSE* "$component"/LICENCE* "$component"/COPYING*; do
             [[ ! -f $file ]] || install -Dm644 "$file" "$pkgdir/usr/share/licenses/ctr-nitrofueled/$(basename "$component")-$(basename "$file")"
         done

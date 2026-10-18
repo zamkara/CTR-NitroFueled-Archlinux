@@ -127,7 +127,7 @@ class NativeIntegrationTests(unittest.TestCase):
             root = Path(folder)
             source = root / 'src/ctr-nitrofueled-source'
             source.mkdir(parents=True)
-            for name in ('launcher', 'scripts', 'patches', 'packaging/arch'):
+            for name in ('launcher', 'scripts', 'patches', 'packaging/arch', 'gpu/third_party/fonts'):
                 shutil.copytree(ROOT / name, source / name, ignore=shutil.ignore_patterns('__pycache__'))
             for name in ('run.sh', 'run.py', 'README.md', 'LICENSE', 'tools/merge_update.py',
                          'tools/gen_import_names.py', 'docs/images/logo.png'):
@@ -152,6 +152,7 @@ class NativeIntegrationTests(unittest.TestCase):
                 self.assertTrue((app / name).is_file(), name)
             info = json.loads((app / 'build-info.json').read_text())
             self.assertRegex(info['commit'], r'^[a-f0-9]{40}$')
+            self.assertTrue((stage / 'usr/share/licenses/ctr-nitrofueled/fonts-LICENSE-DejaVu.txt').is_file())
             for name in ('ctr-nitrofueled.desktop', 'ctr-nitrofueled-play.desktop'):
                 self.assertTrue((stage / 'usr/share/applications' / name).is_file())
 
