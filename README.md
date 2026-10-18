@@ -1,9 +1,15 @@
 # CTR Nitro-Fueled for Arch Linux
-<img width="1920" height="1080" alt="screenshot-2026-10-18_15-19-54" src="https://github.com/user-attachments/assets/53cfda66-6e41-4dfb-bf53-1a4664a8f601" />
+<img width="1920" height="1080" alt="screenshot-2026-10-18_16-52-11" src="https://github.com/user-attachments/assets/9c13c82b-24be-4a9e-a837-75ac4b4442ef" />
 
 Native x86_64 Arch Linux packaging for Crash Team Racing: Nitro-Fueled, including Omarchy.
 Based on [GetLostIn/CTR-NitroFueled-PC](https://github.com/GetLostIn/CTR-NitroFueled-PC),
 which derives from [SacredFire](https://github.com/T3CHNOLOG1C/SacredFire), bbport and shadPS4.
+
+<img width="1920" height="1080" alt="screenshot-2026-10-18_15-19-54" src="https://github.com/user-attachments/assets/1dd7aadd-d56c-4e4d-81b3-b948552340ae" />
+
+<img width="1920" height="1080" alt="screenshot-2026-10-18_16-42-23" src="https://github.com/user-attachments/assets/fd9a702d-579f-40f9-b9e4-7cde2328279d" />
+
+
 This fork produces Arch packages; upstream remains responsible for its Windows distribution.
 
 No game files are included. You need your own decrypted base game and **1.21 update**.
