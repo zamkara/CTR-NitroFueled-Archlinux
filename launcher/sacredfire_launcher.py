@@ -663,8 +663,8 @@ def play():
     """--play: the game with the saved settings, no window (Steam Deck game mode)."""
     settings = load_settings()
     if not (Path(settings["game_dir"]).expanduser() / "eboot.bin").is_file():
-        print("SacredFire: choose the game folder in the launcher first", file=sys.stderr)
-        return 1
+        print("No prepared game selected; opening the launcher for setup.", file=sys.stderr)
+        return LauncherApp().run([])
     os.chdir(PORT_DIR)
     os.execvpe("bash", ["bash", str(PORT_DIR / "run.sh")], game_environment(settings))
 

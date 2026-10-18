@@ -29,6 +29,9 @@ The application menu contains:
 - **Crash Team Racing Nitro-Fueled** — launch directly using those same saved settings.
 
 Terminal equivalents: `ctr-nitrofueled` and `ctr-nitrofueled --play`.
+The lightweight launcher defaults to the GTK Cairo renderer; `GSK_RENDERER=gl` or
+`GSK_RENDERER=vulkan` overrides it. This does not change the game's Vulkan renderer.
+Without a prepared game folder, the direct-play shortcut opens the launcher for setup.
 The Linux launcher is upstream's GTK4/libadwaita launcher; it does not promise feature parity
 with upstream's newer Windows launcher. Headless build checks do not establish gameplay compatibility.
 
@@ -53,7 +56,7 @@ Remove with `sudo pacman -Rns ctr-nitrofueled`. User saves and settings are pres
 
 ## Build and release
 
-The daily workflow at **03:53 Asia/Jakarta**, manual runs and pushes to `main` fetch and merge
+The scheduled daily workflow, manual runs and pushes to `main` fetch and merge
 upstream before building. Source history is preserved. This fork's packaging, workflows and README
 are protected; source conflicts stop synchronization for review instead of discarding either side.
 An already published source hash skips the build. Every published release uses `arch-<full commit>`

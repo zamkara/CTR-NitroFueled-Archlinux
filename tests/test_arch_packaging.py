@@ -156,6 +156,19 @@ class NativeIntegrationTests(unittest.TestCase):
             for name in ('ctr-nitrofueled.desktop', 'ctr-nitrofueled-play.desktop'):
                 self.assertTrue((stage / 'usr/share/applications' / name).is_file())
 
+    def test_launcher_renderer_default_and_user_override(self):
+        for override, expected in ((None, 'cairo'), ('gl', 'gl'), ('vulkan', 'vulkan')):
+            with self.subTest(renderer=override), tempfile.TemporaryDirectory() as folder:
+                env = {'PATH': os.environ['PATH'], 'HOME': folder,
+                       'VK_DRIVER_FILES': '/selected/game-driver.json'}
+                if override is not None:
+                    env['GSK_RENDERER'] = override
+                result = subprocess.run(['bash', '-c',
+                    'cd() { :; }; exec() { printf "%s|%s" "$GSK_RENDERER" "$VK_DRIVER_FILES"; }; source "$1"',
+                    'wrapper-test', str(ROOT / 'packaging/arch/ctr-nitrofueled')],
+                    env=env, capture_output=True, text=True, check=True)
+                self.assertEqual(result.stdout, expected + '|/selected/game-driver.json')
+
 
 class UpstreamSyncTests(unittest.TestCase):
     def test_code_updates_keep_fork_policy_and_remove_added_upstream_workflow(self):

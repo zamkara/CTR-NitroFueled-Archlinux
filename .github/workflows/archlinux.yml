@@ -2,7 +2,7 @@ name: Native Arch Linux release
 
 on:
   schedule:
-    - cron: '53 20 * * *' # Daily at 03:53 Asia/Jakarta.
+    - cron: '53 20 * * *' # Daily upstream check.
   push:
     branches: [main]
   pull_request:

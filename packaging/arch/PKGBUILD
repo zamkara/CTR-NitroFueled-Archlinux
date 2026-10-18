@@ -1,4 +1,4 @@
-# Maintainer: Zam <https://github.com/zamkara>
+# Native Arch Linux runtime and launcher packaging.
 pkgname=ctr-nitrofueled
 pkgver=0.r0.g46c810b2a304
 pkgrel=1
